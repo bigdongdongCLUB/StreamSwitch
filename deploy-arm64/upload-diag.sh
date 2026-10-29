@@ -5,9 +5,9 @@ APP=$APP_DIR
 echo "--- livems log (materials/timeout/error):"
 grep -nE "materials|素材|ffprobe|timeout|i/o|EOF|broken pipe| 5[0-9][0-9] " $APP/backend/logs/livems.log | tail -n 25 | cut -c1-260
 echo "--- nginx error log:"
-tail -n 15 /var/log/nginx/live.rextian.com.error.log | cut -c1-300
+tail -n 15 /var/log/nginx/streamswitch.error.log | cut -c1-300
 echo "--- nginx access: POST materials:"
-grep -E "POST /api/v1/studio/materials" /var/log/nginx/live.rextian.com.log | tail -n 8 | cut -c1-220
+grep -E "POST /api/v1/studio/materials" /var/log/nginx/streamswitch.log | tail -n 8 | cut -c1-220
 echo "--- disk:"
 df -h /www /tmp /var/lib/nginx 2>/dev/null
 ls -la $APP/backend/data/studio/videos/ 2>&1

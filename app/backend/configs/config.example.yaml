@@ -26,9 +26,9 @@ server:
 mysql:
   host: 127.0.0.1
   port: 3306
-  user: live_rextian_com
+  user: streamswitch
   password: "CHANGE_ME_mysql_password"   # 改成你的数据库密码
-  database: live_rextian_com
+  database: streamswitch
   charset: utf8mb4
   max_open_conns: 50
   max_idle_conns: 10
@@ -90,7 +90,7 @@ frontend:
   dist_dir: "../frontend/dist"   # 前端构建产物目录
 
 nginx:                              # 证书管理（后台「域名配置」页可查看/上传/部署证书）
-  vhost_conf: "/www/server/panel/vhost/nginx/live.rextian.com.conf"
+  vhost_conf: "/www/server/panel/vhost/nginx/streamswitch.conf"
   cert_dir: "/www/server/panel/vhost/cert"
   reload_cmd: "nginx -s reload"
 

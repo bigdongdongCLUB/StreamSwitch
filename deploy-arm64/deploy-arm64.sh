@@ -16,8 +16,7 @@
 set -euo pipefail
 
 PKG=/root/livems-pkg
-CERT_DIR=/www/server/panel/vhost/cert
-NGX_CONF=/etc/nginx/conf.d/live.rextian.com.conf
+# APP_DIR / ZLM_DIR / CERT_DIR / CERT_NAME / NGX_CONF 均来自 .env.local（见 env.sh 默认值）
 
 STEPS="${*:-app db zlm systemd nginx start check}"
 has() { [[ " $STEPS " == *" $1 "* ]]; }
@@ -101,7 +100,8 @@ fi
 # ---- 4. systemd ----
 if has systemd; then
   echo "==> [systemd] 安装服务单元"
-  cp -a "$PKG/systemd/zlm.service" "$PKG/systemd/livems.service" /etc/systemd/system/
+  sed "s#/www/wwwroot/streamswitch#$APP_DIR#g" "$PKG/systemd/livems.service" > /etc/systemd/system/livems.service
+  cp -a "$PKG/systemd/zlm.service" /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable zlm livems
 fi
@@ -110,8 +110,22 @@ fi
 if has nginx; then
   echo "==> [nginx] 部署站点配置与证书"
   mkdir -p "$CERT_DIR"
-  cp -a "$PKG/certs/live.rextian.com" "$CERT_DIR/"
-  cp "$PKG/nginx-live.conf" "$NGX_CONF"
+  if [[ -f "$PKG/certs/$CERT_NAME/fullchain.pem" && -f "$PKG/certs/$CERT_NAME/privkey.pem" ]]; then
+    cp -a "$PKG/certs/$CERT_NAME" "$CERT_DIR/"
+    echo "    已安装预置证书 $CERT_NAME"
+  elif [[ ! -f "$CERT_DIR/$CERT_NAME/fullchain.pem" ]]; then
+    # 没有证书：生成自签名占位，保证 Nginx 的 ssl 监听能启动；之后在后台「域名配置 → 上传证书」替换
+    mkdir -p "$CERT_DIR/$CERT_NAME"
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=$SITE_NAME" \
+      -keyout "$CERT_DIR/$CERT_NAME/privkey.pem" -out "$CERT_DIR/$CERT_NAME/fullchain.pem" >/dev/null 2>&1
+    chmod 600 "$CERT_DIR/$CERT_NAME/privkey.pem"
+    echo "    未提供证书，已生成自签名占位证书 $CERT_DIR/$CERT_NAME（请在后台上传真实证书）"
+  fi
+  # 站点配置：模板中的路径/证书名替换为本站点值
+  sed -e "s#/www/wwwroot/streamswitch#$APP_DIR#g" \
+      -e "s#/www/server/panel/vhost/cert/default#$CERT_DIR/$CERT_NAME#g" \
+      -e "s#/var/log/nginx/streamswitch\.#/var/log/nginx/$SITE_NAME.#g" \
+      "$PKG/deploy-arm64/nginx-live.conf" > "$NGX_CONF"
   rm -f /etc/nginx/sites-enabled/default
   nginx -t
   systemctl enable nginx

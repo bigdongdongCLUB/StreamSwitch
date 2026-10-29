@@ -29,7 +29,7 @@ StreamSwitch/
 │   ├── deploy/               原 x86/宝塔部署模板（nginx / systemd / 迁移脚本）
 │   ├── sql/schema.sql        建库脚本
 │   └── docs/deploy.md        原部署文档
-├── arm64/                    ARM64 主机实际使用的配置（nginx 站点、ZLM commit、apt 源备份）
+├── arm64/                    ARM64 参考信息（ZLM 源码 commit、apt 源备份；编译产物不入库）
 ├── deploy-arm64/             ★ ARM64 / 原生 Ubuntu 的部署、诊断、测试脚本（见下）
 ├── zlm/conf/config.ini       ZLMediaKit 配置（api.secret 为占位，部署时由 .env.local 填入）
 ├── systemd/                  zlm.service / livems.service
@@ -63,7 +63,8 @@ scp arm64/livems-arm64 deploy-arm64/env.sh deploy-arm64/.env.local root@<HOST_IP
 ssh root@<HOST_IP> 'bash /root/livems-pkg/deploy-arm64/build-zlm.sh'     # 源码编译 ZLMediaKit（约 10 分钟）
 ssh root@<HOST_IP> 'bash /root/livems-pkg/deploy-arm64/deploy-arm64.sh'  # app db zlm systemd nginx start check
 ```
-`deploy-arm64.sh` 可分步执行：`app`（应用目录 + 从模板生成 config.yaml）、`db`（建库导入）、`zlm`、`systemd`、`nginx`（含证书目录）、`start`、`check`。
+`deploy-arm64.sh` 可分步执行：`app`（应用目录 + 从模板生成 config.yaml）、`db`（建库导入）、`zlm`、`systemd`、`nginx`（站点配置 + 证书：有预置证书则安装，否则生成自签名占位）、`start`、`check`。
+部署完成后登录后台 → 「域名配置」：上传真实 SSL 证书并应用、填写推流/播放域名。
 
 ### 3. 验证
 ```bash
@@ -111,7 +112,8 @@ bash deploy-arm64/e2e-play.sh        # 登录 → 令牌 → HTTP-FLV / HLS 实�
 
 ## 安全说明
 - `config.yaml`、证书、SSH 密钥、数据库导出均不入库；部署脚本从 `.env.local` 读取密钥并在首次部署时由 `config.example.yaml` 生成 `config.yaml`（JWT secret 随机生成）。
-- 仓库中的 `live.rextian.com` 是原项目的站点目录/配置命名约定（`/www/wwwroot/live.rextian.com` 等），并非当前部署域名；如需更换请全局替换。
+- 仓库**不预设任何域名与证书**：Nginx 模板 `server_name _;` 匹配任意主机名；首次部署若未在 `certs/<CERT_NAME>/` 提供证书，脚本会生成自签名占位证书让 HTTPS 端口可启动，请部署后在后台「域名配置 → 上传证书」上传并应用自己的证书，并在「域名配置」中填写实际的推流/播放域名。
+- 站点名 `SITE_NAME`（默认 `streamswitch`）决定应用目录 `/www/wwwroot/<SITE_NAME>`、Nginx 配置文件名、日志与默认证书目录，可在 `.env.local` 中更改。
 - 对外请仅开放 51880 / 51443 / 1935（RTSP 554 按需），8090 / 8080 / 3306 / 6379 / 6060 严禁暴露公网。
 
 ## License

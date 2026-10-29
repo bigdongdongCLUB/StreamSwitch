@@ -191,7 +191,7 @@ func Default() *Config {
 			Port:            3306,
 			User:            "root",
 			Password:        "",
-			Database:        "live_rextian_com",
+			Database:        "streamswitch",
 			Charset:         "utf8mb4",
 			MaxOpenConns:    50,
 			MaxIdleConns:    10,
@@ -252,7 +252,7 @@ func Default() *Config {
 			DistDir: "../frontend/dist",
 		},
 		Nginx: NginxConfig{
-			VhostConf: "/www/server/panel/vhost/nginx/live.rextian.com.conf",
+			VhostConf: "/www/server/panel/vhost/nginx/streamswitch.conf",
 			CertDir:   "/www/server/panel/vhost/cert",
 			ReloadCmd: "nginx -s reload",
 		},

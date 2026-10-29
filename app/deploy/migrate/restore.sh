@@ -44,9 +44,9 @@ echo "==> 解压迁移包"
 tar -C "$WORK" -xzf "$PKG"
 cat "$WORK/MIGRATION_INFO.txt" 2>/dev/null || true
 
-APP_DIR="/www/wwwroot/live.rextian.com"
+APP_DIR="/www/wwwroot/streamswitch"
 ZLM_DIR="/www/server/zlm"
-BT_VHOST="/www/server/panel/vhost/nginx/live.rextian.com.conf"
+BT_VHOST="/www/server/panel/vhost/nginx/streamswitch.conf"
 BT_CERT_DIR="/www/server/panel/vhost/cert"
 
 # ---- 1. 应用目录 ----
@@ -106,16 +106,16 @@ systemctl enable zlm livems
 
 # ---- 5. Nginx 站点配置 ----
 echo "==> [5/6] 部署 Nginx 站点配置"
-if [[ -f "$APP_DIR/deploy/nginx/live.rextian.com.conf" ]]; then
-  cp -a "$APP_DIR/deploy/nginx/live.rextian.com.conf" "$BT_VHOST"
+if [[ -f "$APP_DIR/deploy/nginx/streamswitch.conf" ]]; then
+  cp -a "$APP_DIR/deploy/nginx/streamswitch.conf" "$BT_VHOST"
   nginx -t
 fi
 
 # ---- 6. SSL 证书 ----
-if [[ $SKIP_CERT -eq 0 && -d "$WORK/certs/live.rextian.com" ]]; then
+if [[ $SKIP_CERT -eq 0 && -d "$WORK/certs/default" ]]; then
   echo "==> [6/6] 还原 SSL 证书"
   mkdir -p "$BT_CERT_DIR"
-  cp -a "$WORK/certs/live.rextian.com" "$BT_CERT_DIR/"
+  cp -a "$WORK/certs/default" "$BT_CERT_DIR/"
 else
   echo "==> [6/6] 跳过证书还原（请在宝塔面板重新申请）"
 fi

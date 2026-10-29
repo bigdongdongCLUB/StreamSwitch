@@ -82,7 +82,7 @@ export default {
     const certSaving = ref(false)
     const certForm = reactive({ name: '', fullchain: '', privkey: '', apply: true })
     const openCertDlg = (row) => {
-      certForm.name = row ? row.name : 'live.rextian.com'
+      certForm.name = row ? row.name : ''
       certForm.fullchain = ''
       certForm.privkey = ''
       certForm.apply = true
@@ -110,7 +110,7 @@ export default {
           else if (type.endsWith('PRIVATE KEY')) keys.push(b)
         }
         // 用第一个文件名猜证书名称（去掉扩展名与常见前缀）
-        if (!certForm.name || certForm.name === 'live.rextian.com') {
+        if (!certForm.name) {
           const base = f.name.replace(/\.(pem|crt|cer|key|txt)$/i, '').replace(/^(fullchain|privkey|cert|certificate|chain|key)[._-]?/i, '')
           if (/^[A-Za-z0-9][A-Za-z0-9._*-]{0,127}$/.test(base) && base.includes('.')) certForm.name = base
         }
@@ -362,7 +362,7 @@ export default {
           <span class="text-gray" style="font-size:12px;margin-left:10px">部署到本站点 Nginx，应用前自动校验，失败自动回滚</span>
         </template>
         <div class="page-toolbar">
-          <span class="text-gray">证书需包含完整证书链（fullchain）与私钥（privkey）；当前站点使用泛域名证书覆盖 *.rextian.com</span>
+          <span class="text-gray">证书需包含完整证书链（fullchain）与私钥（privkey）；当前站点使用证书请在此处上传并应用</span>
           <div class="spacer"></div>
           <el-button icon="Refresh" @click="loadCerts">刷新</el-button>
           <el-button v-if="canUpdate" type="primary" icon="Upload" @click="openCertDlg(null)">上传证书</el-button>
@@ -435,7 +435,7 @@ export default {
       <el-dialog v-model="certDlgVisible" title="上传 / 更新 SSL 证书" width="640px">
         <el-form label-width="110px">
           <el-form-item label="证书名称" required>
-            <el-input v-model="certForm.name" placeholder="通常为域名，如 live.rextian.com" class="mono" style="width:300px" />
+            <el-input v-model="certForm.name" placeholder="通常为域名，如 live.example.com" class="mono" style="width:300px" />
             <div class="text-gray" style="font-size:12px">同名证书会被覆盖更新</div>
           </el-form-item>
           <el-form-item label="证书文件">

@@ -9,11 +9,11 @@
 
 ```
 迁移包（livems-migrate-<时间戳>.tar.gz）
-├── app/                     应用目录（/www/wwwroot/live.rextian.com）
+├── app/                     应用目录（/www/wwwroot/streamswitch）
 │   ├── backend/             Go 后端二进制 + ffmpeg 工具 + 中文字体 + 配置 + 素材
 │   ├── frontend/dist/       前端产物
 │   ├── deploy/  sql/  docs/ 部署模板与数据库结构
-├── db/live_rextian_com.sql  MySQL 全库 dump（含全部业务数据/权限/配置）
+├── db/streamswitch.sql  MySQL 全库 dump（含全部业务数据/权限/配置）
 ├── zlm/                     ZLMediaKit 二进制 + config.ini
 ├── systemd/                 livems.service + zlm.service
 ├── certs/                   SSL 证书（宝塔目录约定）
@@ -28,7 +28,7 @@
 ### 1. 源服务器打包
 
 ```bash
-cd /www/wwwroot/live.rextian.com
+cd /www/wwwroot/streamswitch
 bash deploy/migrate/pack.sh                  # 完整打包（含素材库）
 # 素材很多想分开传时：bash deploy/migrate/pack.sh --no-materials
 ```
@@ -85,4 +85,4 @@ bash /tmp/livems-pkg/app/deploy/migrate/restore.sh /root/livems-migrate-*.tar.gz
 ffmpeg 工具和中文字体。本方案把这些全部打进去，比宝塔备份完整。
 如果你坚持用宝塔备份：网站备份 + 数据库备份之外，还需手动再备份这三样——
 `/www/server/zlm/`、`/etc/systemd/system/{livems,zlm}.service`、
-`/www/server/panel/vhost/{nginx/live.rextian.com.conf, cert/live.rextian.com/}`。
+`/www/server/panel/vhost/{nginx/streamswitch.conf, cert/default/}`。

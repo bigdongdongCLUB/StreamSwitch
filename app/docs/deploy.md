@@ -29,7 +29,7 @@
 ## 目录结构
 
 ```
-/www/wwwroot/live.rextian.com
+/www/wwwroot/streamswitch
 ├── backend/                 Go 后端
 │   ├── cmd/server/          入口
 │   ├── configs/config.yaml  运行配置（含数据库/Redis/ZLM/JWT 机密）
@@ -41,7 +41,7 @@
 │   ├── lib/                 Vue3 / VueRouter / ElementPlus UMD
 │   ├── css/  js/            应用代码（原生 ES Modules）
 ├── deploy/
-│   ├── nginx/live.rextian.com.conf   Nginx 站点配置（部署到 /www/server/panel/vhost/nginx/）
+│   ├── nginx/streamswitch.conf   Nginx 站点配置（部署到 /www/server/panel/vhost/nginx/）
 │   ├── systemd/livems.service        systemd 单元（部署到 /etc/systemd/system/）
 │   ├── scripts/deploy.sh             一键部署脚本
 │   └── zlm/config.ini                ZLMediaKit 配置参考
@@ -54,10 +54,10 @@
 ### 1. 数据库
 
 ```bash
-mysql -uroot -p -e "CREATE DATABASE live_rextian_com DEFAULT CHARSET utf8mb4;"
-mysql -uroot -p live_rextian_com < sql/schema.sql
+mysql -uroot -p -e "CREATE DATABASE streamswitch DEFAULT CHARSET utf8mb4;"
+mysql -uroot -p streamswitch < sql/schema.sql
 # 创建独立账号（示例）
-mysql -uroot -p -e "CREATE USER 'live_rextian_com'@'127.0.0.1' IDENTIFIED BY '<密码>'; GRANT ALL ON live_rextian_com.* TO 'live_rextian_com'@'127.0.0.1'; FLUSH PRIVILEGES;"
+mysql -uroot -p -e "CREATE USER 'streamswitch'@'127.0.0.1' IDENTIFIED BY '<密码>'; GRANT ALL ON streamswitch.* TO 'streamswitch'@'127.0.0.1'; FLUSH PRIVILEGES;"
 ```
 
 ### 2. 后端配置
@@ -111,7 +111,7 @@ systemctl enable --now livems
 ### 5. Nginx
 
 ```bash
-cp deploy/nginx/live.rextian.com.conf /www/server/panel/vhost/nginx/
+cp deploy/nginx/streamswitch.conf /www/server/panel/vhost/nginx/
 nginx -t && nginx -s reload
 ```
 
@@ -119,7 +119,7 @@ nginx -t && nginx -s reload
 
 ```bash
 curl http://127.0.0.1:8090/health
-# 浏览器打开 https://live.rextian.com/ ，admin / admin123 登录后修改密码
+# 浏览器打开 https://<你的域名>/ ，admin / admin123 登录后修改密码
 ```
 
 ## 日常更新

@@ -38,4 +38,4 @@ echo "### 5. 删除后状态"
 $M -e "SELECT app, stream, stream_id, COUNT(*) n FROM play_token GROUP BY app, stream, stream_id" 2>/dev/null
 echo "  Redis 剩余 playtoken key: $(redis-cli --scan --pattern '*playtoken:*' | wc -l)"
 echo "  MySQL 剩余令牌: $($M -N -e 'SELECT COUNT(*) FROM play_token' 2>/dev/null)"
-echo "### DONE  (回滚: mysql ... live_rextian_com < $BK)"
+echo "### DONE  (回滚: mysql ... streamswitch < $BK)"

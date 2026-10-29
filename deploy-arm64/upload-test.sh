@@ -29,7 +29,7 @@ echo "  总耗时 $((END-START))s，新素材 id=${NEWID:-无}"
 
 echo "### 服务端日志"
 ssh -i $SSH_KEY $SSH_HOST \
-  'grep -E "studio/materials|素材已上传" $APP_DIR/backend/logs/livems.log | tail -n 3 | cut -c1-200; echo "  nginx error 新增:"; tail -n 2 /var/log/nginx/live.rextian.com.error.log | cut -c1-160; echo "  内存:"; free -m | sed -n 2p; ls -la $APP_DIR/backend/data/studio/videos/ | tail -n +4'
+  'grep -E "studio/materials|素材已上传" $APP_DIR/backend/logs/livems.log | tail -n 3 | cut -c1-200; echo "  nginx error 新增:"; tail -n 2 /var/log/nginx/streamswitch.error.log | cut -c1-160; echo "  内存:"; free -m | sed -n 2p; ls -la $APP_DIR/backend/data/studio/videos/ | tail -n +4'
 
 if [[ -n "$NEWID" && "$KEEP" != "keep" ]]; then
   echo "### 清理测试素材 id=$NEWID"

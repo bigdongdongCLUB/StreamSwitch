@@ -3,7 +3,7 @@
 --  MySQL 8.0+ / 宝塔面板环境
 --
 --  用法：
---    mysql -u<user> -p<pwd> live_rextian_com < sql/schema.sql
+--    mysql -u<user> -p<pwd> streamswitch < sql/schema.sql
 --
 --  说明：
 --    1. 所有表使用 utf8mb4 字符集，兼容中文/emoji

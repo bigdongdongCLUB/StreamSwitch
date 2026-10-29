@@ -13,7 +13,7 @@ set -euo pipefail
 PROJ_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$PROJ_DIR/backend"
 SITE_CONF="$(basename "$(grep -l server_name /www/server/panel/vhost/nginx/*.conf 2>/dev/null | head -1)" 2>/dev/null || echo '')"
-NGINX_VHOST="/www/server/panel/vhost/nginx/live.rextian.com.conf"
+NGINX_VHOST="/www/server/panel/vhost/nginx/streamswitch.conf"
 SERVICE_NAME="livems"
 
 WITH_NGINX=1
@@ -31,7 +31,7 @@ systemctl is-active --quiet "$SERVICE_NAME" || { echo "服务启动失败"; jour
 
 if [[ $WITH_NGINX -eq 1 ]]; then
   echo "==> [3/4] 部署 Nginx 站点配置"
-  cp "$PROJ_DIR/deploy/nginx/live.rextian.com.conf" "$NGINX_VHOST"
+  cp "$PROJ_DIR/deploy/nginx/streamswitch.conf" "$NGINX_VHOST"
   nginx -t
   nginx -s reload
 else
@@ -43,5 +43,5 @@ curl -fsS http://127.0.0.1:8090/health | grep -q '"code":0' && echo "后端健�
 
 echo ""
 echo "部署完成。"
-echo "  管理后台: https://live.rextian.com:51443/  (内网: http://live.rextian.com:51880/)"
+echo "  管理后台: https://streamswitch:51443/  (内网: http://streamswitch:51880/)"
 echo "  默认账号: admin / admin123（首次登录请立即修改密码）"

@@ -33,7 +33,7 @@ echo -n "  登录(错误密码):     "; curl -s -X POST http://127.0.0.1:51880/a
 echo -n "  未登录访问 /streams: "; curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:51880/api/v1/streams
 echo -n "  前端 index.html:    "; curl -s http://127.0.0.1:51880/ | grep -oE '<title>[^<]*</title>'
 echo -n "  HTTPS 51443 (-k):   "; curl -sk -o /dev/null -w '%{http_code} %{ssl_verify_result}\n' https://127.0.0.1:51443/health
-echo -n "  证书主题:           "; echo | openssl s_client -connect 127.0.0.1:51443 -servername live.rextian.com 2>/dev/null | openssl x509 -noout -subject -enddate 2>/dev/null | tr '\n' ' '; echo
+echo -n "  证书主题:           "; echo | openssl s_client -connect 127.0.0.1:51443 -servername "${DDNS_DOMAIN:-localhost}" 2>/dev/null | openssl x509 -noout -subject -enddate 2>/dev/null | tr '\n' ' '; echo
 
 echo "### 6. 播放鉴权（无令牌应被拒绝）"
 echo -n "  HTTP-FLV 无 token:  "; curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 "http://127.0.0.1:51880/live/live/vd01.live.flv"
@@ -43,6 +43,6 @@ echo -n "  旧 token(已过期):   "; curl -s -o /dev/null -w '%{http_code}\n' -
 echo "### 7. 日志尾部"
 echo "  -- livems:"; tail -n 15 $APP/backend/logs/livems.log | cut -c1-200
 echo "  -- zlm:";    grep -vE '^\s*$' $ZLM_DIR/log/stdout.log | tail -n 6 | cut -c1-200
-echo "  -- nginx error:"; tail -n 3 /var/log/nginx/live.rextian.com.error.log 2>/dev/null
+echo "  -- nginx error:"; tail -n 3 /var/log/nginx/streamswitch.error.log 2>/dev/null
 echo "### 8. 资源占用"
 uptime; free -h | head -2; ps -o pid,pcpu,pmem,rss,comm -C MediaServer,livems,ffmpeg

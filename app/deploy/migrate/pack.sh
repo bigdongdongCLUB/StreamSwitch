@@ -74,8 +74,8 @@ cp -a /etc/systemd/system/zlm.service "$WORK/systemd/"
 
 echo "==> [5/6] 收集 SSL 证书"
 mkdir -p "$WORK/certs"
-if [[ -d /www/server/panel/vhost/cert/live.rextian.com ]]; then
-  cp -a /www/server/panel/vhost/cert/live.rextian.com "$WORK/certs/"
+if [[ -d /www/server/panel/vhost/cert/default ]]; then
+  cp -a /www/server/panel/vhost/cert/default "$WORK/certs/"
 else
   echo "    警告: 宝塔证书目录不存在，跳过（新服务器需重新申请证书）"
 fi
