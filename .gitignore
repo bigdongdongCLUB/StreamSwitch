@@ -1,13 +1,13 @@
 # ---- 密钥 / 证书 / 私有配置（绝不入库）----
 certs/
-deploy-arm64/livems_key
-deploy-arm64/livems_key.pub
-deploy-arm64/.env.local
-deploy-arm64/SITE-NOTES.local.md
-deploy-arm64/.leak-patterns.local
-deploy-arm64/prof/
+tools/livems_key
+tools/livems_key.pub
+tools/.env.local
+tools/SITE-NOTES.local.md
+tools/.leak-patterns.local
+tools/prof/
 app/backend/configs/config.yaml
-arm64/config.yaml.deployed
+arm64/
 app/backend/data/hls_key/
 
 # ---- 数据库导出（含用户密码哈希、令牌、日志）----
@@ -30,3 +30,5 @@ arm64/MediaServer-arm64
 .deploy-tmp/
 .claude/
 *.log
+.legacy/
+/dist/

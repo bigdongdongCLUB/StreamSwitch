@@ -45,6 +45,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 	ip := middleware.GetClientIP(c)
+	if need, _ := h.userSvc.NeedSetup(); need {
+		response.Fail(c, response.CodeFail, "系统尚未初始化，请先注册超级管理员")
+		return
+	}
 	token, expireAt, user, err := h.userSvc.Login(req.Username, req.Password, ip)
 	if err != nil {
 		response.Fail(c, response.CodeUnauthorized, err.Error())
@@ -57,6 +61,43 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		ExpiresAt: expireAt,
 		User:      full,
 	})
+}
+
+// SetupStatus 返回系统是否需要初始化（注册首个超级管理员）。
+//
+// GET /api/v1/setup/status
+func (h *AuthHandler) SetupStatus(c *gin.Context) {
+	need, err := h.userSvc.NeedSetup()
+	if err != nil {
+		response.ServerError(c, "查询初始化状态失败: "+err.Error())
+		return
+	}
+	response.OK(c, gin.H{"need_setup": need})
+}
+
+// SetupRequest 注册首个超级管理员的请求。
+type SetupRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+	Nickname string `json:"nickname"`
+}
+
+// Setup 注册首个超级管理员并直接登录（仅系统没有任何用户时可用）。
+//
+// POST /api/v1/setup
+func (h *AuthHandler) Setup(c *gin.Context) {
+	var req SetupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "请填写用户名和密码")
+		return
+	}
+	token, expireAt, user, err := h.userSvc.SetupFirstAdmin(req.Username, req.Password, req.Nickname, middleware.GetClientIP(c))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	full, _ := h.userSvc.Get(user.ID)
+	response.OKMsg(c, "初始化完成，已登录", LoginResponse{Token: token, ExpiresAt: expireAt, User: full})
 }
 
 // Profile 处理获取当前登录用户信息。

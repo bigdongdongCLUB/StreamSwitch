@@ -10,6 +10,7 @@ import (
 
 	"livems/internal/pkg/jwt"
 	"livems/internal/pkg/logger"
+	"livems/internal/pkg/reqctx"
 	"livems/internal/pkg/response"
 	"livems/internal/pkg/util"
 )
@@ -146,6 +147,15 @@ func ClientIP(c *gin.Context) string {
 		addr = addr[:idx]
 	}
 	return strings.Trim(addr, "[]")
+}
+
+// RequestOrigin 把请求来源（协议/主机/端口）写入 request context，
+// 供未配置播放域名时用当前访问地址生成播放/推流地址。
+func RequestOrigin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Request = c.Request.WithContext(reqctx.With(c.Request.Context(), reqctx.FromRequest(c.Request)))
+		c.Next()
+	}
 }
 
 // ClientIPMiddleware 把真实客户端 IP 写入上下文。

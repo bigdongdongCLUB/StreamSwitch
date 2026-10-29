@@ -211,7 +211,7 @@ type PlayData struct {
 }
 
 // GetPlayData 校验凭证后下发播放地址（自动签发绑定该流的播放令牌）。
-func (s *LivePageService) GetPlayData(code, ticket string) (*PlayData, error) {
+func (s *LivePageService) GetPlayData(ctx context.Context, code, ticket string) (*PlayData, error) {
 	p, err := s.repo.GetByCode(code)
 	if err != nil {
 		return nil, err
@@ -232,7 +232,7 @@ func (s *LivePageService) GetPlayData(code, ticket string) (*PlayData, error) {
 		return nil, fmt.Errorf("播放令牌签发失败: %w", err)
 	}
 	// 生成播放地址（默认域名）
-	urls, err := s.playSvc.GenerateURLs(context.Background(), st, 0, tk.Token, tk.ExpireAt)
+	urls, err := s.playSvc.GenerateURLs(ctx, st, 0, tk.Token, tk.ExpireAt)
 	if err != nil {
 		return nil, err
 	}

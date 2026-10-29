@@ -1,6 +1,9 @@
 package repository
 
 import (
+	"context"
+	"fmt"
+	"livems/internal/database"
 	"database/sql"
 	"strings"
 	"time"
@@ -178,6 +181,56 @@ func (r *UserRepo) AssignRoles(userID uint64, roleIDs []uint64) error {
 		}
 		return nil
 	})
+}
+
+// Count 统计用户总数（为 0 表示系统尚未初始化，需要注册首个超级管理员）。
+func (r *UserRepo) Count() (int, error) {
+	var n int
+	err := queryRow(`SELECT COUNT(*) FROM sys_user`).Scan(&n)
+	return n, err
+}
+
+// CreateFirstAdmin 在「系统中没有任何用户」的前提下创建首个超级管理员并赋予超管角色。
+//
+// 使用 MySQL 命名锁保证并发注册时只有一个请求成功；已存在用户时返回 created=false。
+func (r *UserRepo) CreateFirstAdmin(u *models.User, adminRoleCode string) (created bool, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	conn, err := database.DB.Conn(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer conn.Close()
+	var got sql.NullInt64
+	if err := conn.QueryRowContext(ctx, `SELECT GET_LOCK('streamswitch_first_admin', 10)`).Scan(&got); err != nil {
+		return false, err
+	}
+	if !got.Valid || got.Int64 != 1 {
+		return false, fmt.Errorf("系统繁忙，请稍后重试")
+	}
+	defer conn.ExecContext(context.Background(), `SELECT RELEASE_LOCK('streamswitch_first_admin')`)
+
+	var n int
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM sys_user`).Scan(&n); err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return false, nil
+	}
+	now := time.Now().Unix()
+	res, err := conn.ExecContext(ctx, `
+		INSERT INTO sys_user (username, password, nickname, email, phone, avatar, status, is_super,
+			remark, created_at, updated_at) VALUES (?,?,?,'','','',1,1,'首个注册用户（系统初始化）',?,?)`,
+		u.Username, u.Password, u.Nickname, now, now)
+	if err != nil {
+		return false, err
+	}
+	id, _ := res.LastInsertId()
+	u.ID, u.Status, u.IsSuper, u.CreatedAt, u.UpdatedAt = uint64(id), 1, 1, now, now
+	// 赋予内置超管角色（不存在时忽略：is_super=1 已拥有全部权限）
+	_, _ = conn.ExecContext(ctx, `INSERT IGNORE INTO sys_user_role (user_id, role_id)
+		SELECT ?, id FROM sys_role WHERE code = ?`, u.ID, adminRoleCode)
+	return true, nil
 }
 
 // CountAdmins 统计超级管理员数量（防止删光导致无法登录）。

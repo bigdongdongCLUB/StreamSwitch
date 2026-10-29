@@ -1,5 +1,5 @@
 # =============================================================================
-#  流媒体管理系统 - 配置文件模板
+#  StreamSwitch - 后端配置模板（开发/手动部署用；一键部署会自动生成 config.yaml）
 #  复制为 config.yaml 后按实际情况修改：
 #      cp configs/config.example.yaml configs/config.yaml
 #
@@ -11,7 +11,7 @@
 
 server:
   host: 0.0.0.0            # 监听地址
-  port: 8090               # 监听端口（宝塔 Nginx 反代到该端口）
+  port: 18090              # 监听端口（Nginx 反代到该端口；一键部署时只监听 127.0.0.1）
   mode: release            # gin 运行模式: debug / release
   trusted_proxies:         # 可信代理IP（用于取真实客户端IP）
     - 127.0.0.1
@@ -38,13 +38,13 @@ mysql:
 redis:
   host: 127.0.0.1
   port: 6379
-  password: ""             # 宝塔 Redis 若设了密码请填写
+  password: ""             # Redis 若设了密码请填写
   db: 0
   pool_size: 20
   dial_timeout: 5
   read_timeout: 3
   write_timeout: 3
-  prefix: "livems:"        # Redis key 前缀
+  prefix: "streamswitch:"  # Redis key 前缀
 
 jwt:
   secret: "CHANGE_ME_livems_jwt_secret_please_change_it"   # 生产环境务必修改
@@ -52,7 +52,7 @@ jwt:
   expire_hour: 24          # 后台登录令牌有效期(小时)
 
 zlm:
-  base_url: "http://127.0.0.1:8080"    # ZLMediaKit 的 HTTP API 地址
+  base_url: "http://127.0.0.1:18080"   # ZLMediaKit 的 HTTP API 地址
   secret: "CHANGE_ME_zlm_api_secret"  # 需与 ZLM config.ini 的 api.secret 一致（不可用 ZLM 内置默认值）
   app: live                # 默认 app
   vhost: "__defaultVhost__"
@@ -63,8 +63,8 @@ zlm:
   rtmps_port: 0
 
 hls:
-  upstream_url: "http://127.0.0.1:8080"  # 回源地址（ZLMediaKit 的 HTTP 端口）
-  zlm_www_dir: "/www/server/zlm/bin/www" # ZLM 的 HLS 落盘目录，配置后加密代理优先直读文件（同机部署建议配置）
+  upstream_url: "http://127.0.0.1:18080" # 回源地址（ZLMediaKit 的 HTTP 端口）
+  zlm_www_dir: "/opt/streamswitch/zlm/www" # ZLM 的 HLS 落盘目录，配置后加密代理优先直读文件（同机部署建议配置）
   key_dir: "./data/hls_key"              # HLS 密钥存放目录
   cache_dir: "./data/hls_cache"           # 加密切片缓存目录
   default_expire_sec: 0                  # 密钥默认有效期(秒)，0=永久
@@ -90,13 +90,13 @@ frontend:
   dist_dir: "../frontend/dist"   # 前端构建产物目录
 
 nginx:                              # 证书管理（后台「域名配置」页可查看/上传/部署证书）
-  vhost_conf: "/www/server/panel/vhost/nginx/streamswitch.conf"
-  cert_dir: "/www/server/panel/vhost/cert"
+  vhost_conf: "/etc/nginx/conf.d/streamswitch.conf"
+  cert_dir: "/opt/streamswitch/certs"
   reload_cmd: "nginx -s reload"
 
 studio:                             # 制播管理（滚动字幕/Logo压制、本地视频轮播）
-  ffmpeg_path: "./bin/tools/ffmpeg"
-  ffprobe_path: "./bin/tools/ffprobe"
+  ffmpeg_path: "/usr/bin/ffmpeg"
+  ffprobe_path: "/usr/bin/ffprobe"
   font_file: "./assets/fonts/NotoSansSC-Regular.otf"
   data_dir: "./data/studio"
   push_base: "rtmp://127.0.0.1:1935"

@@ -8,6 +8,9 @@ const mobileQuery = window.matchMedia('(max-width: 768px)')
 export const store = reactive({
   user: null,
 
+  // 系统是否尚未初始化（没有任何用户）：null=未检查
+  needSetup: null,
+
   // 是否为移动端窄屏，供组件切换布局（如描述列表列数、对话框宽度）
   isMobile: mobileQuery.matches,
 

@@ -207,10 +207,10 @@ func (s *StreamService) GetByStream(app, stream string) (*models.Stream, error) 
 //
 // 对外主机与端口取自「系统设置」中的接入配置（sys_config，实时生效），
 // 未配置时回退到配置文件中的 zlm.rtmp_port 与本机回环地址。
-func (s *StreamService) PublishURL(st *models.Stream) string {
+func (s *StreamService) PublishURL(ctx context.Context, st *models.Stream) string {
 	base := "rtmp://127.0.0.1"
 	if s.settings != nil {
-		base = s.settings.PushBaseURL()
+		base = s.settings.PushBaseURL(ctx)
 	} else if s.cfg.ZLM.RTMPRTMP > 0 {
 		base = fmt.Sprintf("rtmp://127.0.0.1:%d", s.cfg.ZLM.RTMPRTMP)
 	}

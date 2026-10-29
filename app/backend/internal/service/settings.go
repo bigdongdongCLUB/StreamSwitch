@@ -1,11 +1,13 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"livems/internal/config"
+	"livems/internal/pkg/reqctx"
 	"livems/internal/repository"
 )
 
@@ -103,7 +105,7 @@ func (s *SettingsService) SaveIngress(ing *IngressConfig) error {
 }
 
 // resolvePushHost 解析最终生效的推流主机。
-func (s *SettingsService) resolvePushHost(ing *IngressConfig) string {
+func (s *SettingsService) resolvePushHost(ctx context.Context, ing *IngressConfig) string {
 	if ing.FollowPlayDomain {
 		if d := s.playSvc.DefaultDomain(); d != nil {
 			return d.Host
@@ -112,9 +114,12 @@ func (s *SettingsService) resolvePushHost(ing *IngressConfig) string {
 	if ing.PushHost != "" {
 		return ing.PushHost
 	}
-	// 兜底：默认播放域名
+	// 兜底：默认播放域名 → 浏览器当前访问的主机 → 本机
 	if d := s.playSvc.DefaultDomain(); d != nil {
 		return d.Host
+	}
+	if o, ok := reqctx.From(ctx); ok {
+		return o.Host
 	}
 	return "127.0.0.1"
 }
@@ -122,9 +127,9 @@ func (s *SettingsService) resolvePushHost(ing *IngressConfig) string {
 // PushBaseURL 返回推流地址基础部分（含协议、主机、端口），如 rtmp://live.example.com:1935。
 //
 // 默认端口省略：rtmp=1935、rtmps=443。
-func (s *SettingsService) PushBaseURL() string {
+func (s *SettingsService) PushBaseURL(ctx context.Context) string {
 	ing := s.GetIngress()
-	host := s.resolvePushHost(ing)
+	host := s.resolvePushHost(ctx, ing)
 	port := ing.PushPort
 	defaultPort := 1935
 	if ing.PushSchema == "rtmps" {

@@ -1,0 +1,38 @@
+#!/usr/bin/expect -f
+# 驱动交互式中文菜单：选 4 重置密码（回车=默认超管、回车=自动生成密码）→ 返回菜单 → 选 2 查看端口（全部回车不变）→ 0 退出
+set timeout 60
+log_user 0
+log_file -noappend /root/menu-test.log
+expect_after { timeout { set f [open /root/menu-result.txt w]; puts $f "MENU_TEST_TIMEOUT"; close $f; exit 1 } eof { set f [open /root/menu-result.txt w]; puts $f "MENU_TEST_EOF"; close $f; exit 1 } }
+set env(TERM) dumb
+spawn bash /opt/streamswitch/install.sh
+expect "请选择"
+send "4\r"
+expect "要重置密码的用户名"
+send "\r"
+expect "新密码（至少 8 位"
+send "\r"
+expect -re {新密码：(?:\x1b\[1m)?([0-9a-f]{12})}
+set newpw $expect_out(1,string)
+expect "按回车键返回菜单"
+send "\r"
+expect "请选择"
+send "2\r"
+expect "后台 HTTP 端口"
+send "\r"
+expect "后台 HTTPS 端口"
+send "\r"
+expect "RTMP 端口"
+send "\r"
+expect "RTSP 端口"
+send "\r"
+expect "端口未变化"
+expect "按回车键返回菜单"
+send "\r"
+expect "请选择"
+send "0\r"
+expect_after
+expect eof
+set f [open /root/menu-result.txt w]
+puts $f "MENU_TEST_OK newpw=$newpw"
+close $f

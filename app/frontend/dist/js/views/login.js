@@ -23,6 +23,8 @@ export default {
       await formRef.value.validate().catch(() => Promise.reject())
       loading.value = true
       try {
+        const s = await api.setupStatus().catch(() => null)
+        if (s && s.need_setup) { store.needSetup = true; router.replace('/setup'); return }
         const data = await api.login(form.value.username.trim(), form.value.password)
         setToken(data.token)
         store.setUser(data.user)

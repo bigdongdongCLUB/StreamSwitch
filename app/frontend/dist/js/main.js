@@ -4,6 +4,7 @@ import { store } from './store.js'
 import { api, setToken, getToken } from './api.js'
 
 import LoginView from './views/login.js'
+import SetupView from './views/setup.js'
 import PlayPageView from './views/play-page.js'
 import LayoutView from './views/layout.js'
 import DashboardView from './views/dashboard.js'
@@ -25,6 +26,8 @@ const { createApp } = Vue
 // ---------------- 路由 ----------------
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { title: '登录' } },
+  // 系统初始化：注册首个超级管理员
+  { path: '/setup', name: 'setup', component: SetupView, meta: { title: '初始化系统' } },
   // 观众直播播放页（免登录）
   { path: '/p/:code', name: 'play-page', component: PlayPageView, meta: { title: '直播', public: true } },
   {
@@ -54,10 +57,23 @@ const router = VueRouter.createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   document.title = (to.meta.title ? to.meta.title + ' - ' : '') + '流媒体管理系统'
   // 公开页面（观众播放页）不校验登录
   if (to.meta.public) return true
+  // 系统尚未初始化（没有任何用户）：强制进入注册首个超级管理员页面
+  if (store.needSetup === null || store.needSetup === true) {
+    try {
+      store.needSetup = !!(await api.setupStatus()).need_setup
+    } catch (e) {
+      store.needSetup = null  // 后端暂不可用时不拦截，交由后续请求提示
+    }
+  }
+  if (store.needSetup) {
+    if (getToken()) { setToken(''); store.setUser(null) }  // 清掉重装前残留的登录态
+    return to.path === '/setup' ? true : '/setup'
+  }
+  if (to.path === '/setup') return '/login'
   const loggedIn = !!getToken() && !!store.user
   if (to.path === '/login') {
     return loggedIn ? '/' : true

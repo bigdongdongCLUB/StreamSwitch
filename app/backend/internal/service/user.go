@@ -53,6 +53,81 @@ func (s *UserService) Login(username, password, clientIP string) (string, int64,
 	return token, expireAt, u, nil
 }
 
+// NeedSetup 系统是否尚未初始化（没有任何用户，需要注册首个超级管理员）。
+func (s *UserService) NeedSetup() (bool, error) {
+	n, err := s.userRepo.Count()
+	return n == 0, err
+}
+
+// SetupFirstAdmin 注册首个用户并设为超级管理员，成功后直接返回登录令牌。
+//
+// 仅在系统中没有任何用户时允许调用；之后再调用会返回错误。
+func (s *UserService) SetupFirstAdmin(username, password, nickname, clientIP string) (string, int64, *models.User, error) {
+	username = strings.TrimSpace(username)
+	nickname = strings.TrimSpace(nickname)
+	if len(username) < 3 || len(username) > 32 {
+		return "", 0, nil, fmt.Errorf("用户名长度需在 3-32 个字符之间")
+	}
+	for _, c := range username {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.' || c == '@') {
+			return "", 0, nil, fmt.Errorf("用户名只能包含字母、数字及 _ - . @")
+		}
+	}
+	if len(password) < 8 {
+		return "", 0, nil, fmt.Errorf("超级管理员密码长度不能少于 8 位")
+	}
+	if nickname == "" {
+		nickname = "超级管理员"
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", 0, nil, fmt.Errorf("密码加密失败: %w", err)
+	}
+	u := &models.User{Username: username, Password: string(hash), Nickname: nickname}
+	created, err := s.userRepo.CreateFirstAdmin(u, "admin")
+	if err != nil {
+		return "", 0, nil, err
+	}
+	if !created {
+		return "", 0, nil, fmt.Errorf("系统已完成初始化，请直接登录")
+	}
+	logger.Info("系统初始化：已注册首个超级管理员 %s (IP=%s)", u.Username, clientIP)
+	token, expireAt := s.jwtMgr.Generate(u.ID, u.Username, true)
+	_ = s.userRepo.UpdateLoginInfo(u.ID, clientIP)
+	return token, expireAt, u, nil
+}
+
+// ResetPassword 按用户名重置密码（命令行运维用），同时启用该账号。
+func (s *UserService) ResetPasswordByUsername(username, password string) (*models.User, error) {
+	if len(password) < 6 {
+		return nil, fmt.Errorf("密码长度不能少于 6 位")
+	}
+	u, err := s.userRepo.GetByUsername(username)
+	if err != nil {
+		return nil, fmt.Errorf("用户 %s 不存在", username)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.userRepo.UpdatePassword(u.ID, string(hash)); err != nil {
+		return nil, err
+	}
+	if u.Status != 1 {
+		u.Status = 1
+		if err := s.userRepo.Update(u); err != nil {
+			return nil, err
+		}
+	}
+	return u, nil
+}
+
+// AllUsers 列出全部用户（命令行运维用）。
+func (s *UserService) AllUsers() ([]models.User, error) {
+	list, _, err := s.userRepo.List(1, 1000, "")
+	return list, err
+}
+
 // JWTManager 返回令牌管理器（供中间件使用）。
 func (s *UserService) JWTManager() *jwt.Manager { return s.jwtMgr }
 

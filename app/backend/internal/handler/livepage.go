@@ -131,7 +131,7 @@ func (h *LivePageHandler) VerifyPassword(c *gin.Context) {
 //
 // GET /api/v1/p/:code/play?ticket=xxx
 func (h *LivePageHandler) PlayData(c *gin.Context) {
-	data, err := h.svc.GetPlayData(c.Param("code"), c.Query("ticket"))
+	data, err := h.svc.GetPlayData(c.Request.Context(), c.Param("code"), c.Query("ticket"))
 	if err != nil {
 		response.Forbidden(c, err.Error())
 		return

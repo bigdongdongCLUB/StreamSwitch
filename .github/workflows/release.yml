@@ -1,0 +1,137 @@
+name: 构建与发布
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（如 1.1.0，仅构建测试，不发布）"
+        required: false
+        default: "0.0.0-dev"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.arch }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 版本号
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then v="${GITHUB_REF_NAME#v}"; else v="${{ inputs.version }}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: app/backend/go.mod
+          cache-dependency-path: app/backend/go.sum
+
+      - name: 单元测试
+        working-directory: app/backend
+        run: go vet ./... && go test ./...
+
+      - name: 编译 livems
+        working-directory: app/backend
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.Version=${{ steps.ver.outputs.version }}" -o "$RUNNER_TEMP/livems" ./cmd/server
+          "$RUNNER_TEMP/livems" -version
+
+      - name: 缓存 ZLMediaKit
+        id: zlm-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/MediaServer
+          key: zlm-${{ matrix.runner }}-${{ hashFiles('packaging/ZLM_COMMIT') }}
+
+      - name: 编译 ZLMediaKit
+        if: steps.zlm-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libssl-dev
+          git clone --recurse-submodules https://github.com/ZLMediaKit/ZLMediaKit.git "$RUNNER_TEMP/zlm"
+          cd "$RUNNER_TEMP/zlm" && git checkout "$(cat "$GITHUB_WORKSPACE/packaging/ZLM_COMMIT")" && git submodule update --init --recursive
+          mkdir -p build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=OFF -DENABLE_API=OFF -DENABLE_PLAYER=OFF \
+                   -DENABLE_WEBRTC=OFF -DENABLE_SRT=OFF -DENABLE_OPENSSL=ON -DENABLE_FFMPEG=OFF
+          make -j"$(nproc)" MediaServer
+          cp ../release/linux/Release/MediaServer "$RUNNER_TEMP/MediaServer"
+          strip "$RUNNER_TEMP/MediaServer"
+
+      - name: 打包
+        run: |
+          bash packaging/build-package.sh ${{ matrix.arch }} "${{ steps.ver.outputs.version }}" "$RUNNER_TEMP/livems" "$RUNNER_TEMP/MediaServer" dist
+          ldd "$RUNNER_TEMP/MediaServer" | grep -E 'ssl|crypto|stdc'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.arch }}
+          path: dist/*
+
+  test:
+    name: 安装测试 ${{ matrix.os }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+          - arch: amd64
+            os: ubuntu-22.04
+          - arch: arm64
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-${{ matrix.arch }}
+          path: dist
+      - name: 解压
+        run: mkdir -p pkg && tar -xzf dist/streamswitch-linux-${{ matrix.arch }}.tar.gz -C pkg
+      - name: 安装 / 注册 / 重置密码 / 改端口 / 升级 / 卸载
+        env:
+          # GitHub Ubuntu 镜像预装的 MySQL root 密码为 root（ARM 镜像无预装，脚本会自动安装并免密）
+          SS_MYSQL_ROOT_PASSWORD: root
+        run: bash packaging/ci-install-test.sh pkg/streamswitch
+      - name: 失败时输出日志
+        if: failure()
+        run: |
+          sudo tail -n 80 /opt/streamswitch/backend/logs/livems.log || true
+          sudo journalctl -u streamswitch-zlm -n 50 --no-pager || true
+          sudo tail -n 40 /tmp/streamswitch-apt.log || true
+
+  release:
+    name: 发布
+    needs: test
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --title "StreamSwitch ${GITHUB_REF_NAME}" \
+            --notes "一键安装（Ubuntu 22.04+ / Debian 12+，x86_64 / ARM64 自动识别）：
+
+          \`\`\`bash
+          bash <(curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install.sh)
+          \`\`\`
+
+          离线安装：下载对应架构的 \`streamswitch-linux-<arch>.tar.gz\`，解压后执行 \`sudo bash streamswitch/install.sh\`。"

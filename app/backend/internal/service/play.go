@@ -10,6 +10,7 @@ import (
 
 	"livems/internal/config"
 	"livems/internal/models"
+	"livems/internal/pkg/reqctx"
 	"livems/internal/pkg/logger"
 	"livems/internal/repository"
 )
@@ -282,7 +283,12 @@ func (s *PlayService) GenerateURLs(ctx context.Context, st *models.Stream, domai
 		domain = s.DefaultDomain()
 	}
 	if domain == nil {
-		return nil, fmt.Errorf("没有可用的播放域名，请先在后台配置")
+		// 未配置任何播放域名：使用浏览器当前访问的地址（全新部署开箱即用）
+		if o, ok := reqctx.From(ctx); ok {
+			domain = &models.PlayDomain{Name: "当前访问地址", Schema: o.Scheme, Host: o.Host, Port: o.Port, Status: 1}
+		} else {
+			return nil, fmt.Errorf("没有可用的播放域名，请先在后台「域名配置」中添加")
+		}
 	}
 
 	// 组装基础 URL

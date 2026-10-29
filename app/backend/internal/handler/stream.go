@@ -61,7 +61,7 @@ func (h *StreamHandler) Get(c *gin.Context) {
 	}
 	response.OK(c, gin.H{
 		"stream":      st,
-		"publish_url": h.streamSvc.PublishURL(st),
+		"publish_url": h.streamSvc.PublishURL(c.Request.Context(), st),
 	})
 }
 
@@ -81,7 +81,7 @@ func (h *StreamHandler) Create(c *gin.Context) {
 	}
 	response.OKMsg(c, "流创建成功", gin.H{
 		"stream":      st,
-		"publish_url": h.streamSvc.PublishURL(st),
+		"publish_url": h.streamSvc.PublishURL(c.Request.Context(), st),
 	})
 }
 
@@ -178,7 +178,7 @@ func (h *StreamHandler) GenerateURL(c *gin.Context) {
 		expireAt = t.ExpireAt
 	}
 
-	urls, err := h.playSvc.GenerateURLs(context.Background(), st, req.DomainID, token, expireAt)
+	urls, err := h.playSvc.GenerateURLs(c.Request.Context(), st, req.DomainID, token, expireAt)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -200,7 +200,7 @@ func (h *StreamHandler) URLs(c *gin.Context) {
 		return
 	}
 	domainID := uint64(parseInt64(c.Query("domain_id"), 0))
-	urls, err := h.playSvc.GenerateURLs(context.Background(), st, domainID, "", 0)
+	urls, err := h.playSvc.GenerateURLs(c.Request.Context(), st, domainID, "", 0)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -248,7 +248,7 @@ func (h *StreamHandler) Info(c *gin.Context) {
 	}
 	response.OK(c, StreamInfo{
 		Stream:          st,
-		PublishURL:      h.streamSvc.PublishURL(st),
+		PublishURL:      h.streamSvc.PublishURL(c.Request.Context(), st),
 		OnlineText:      onlineText,
 		PublishTimeText: formatTime(st.PublishTime),
 	})

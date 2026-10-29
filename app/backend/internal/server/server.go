@@ -27,6 +27,9 @@ import (
 	"livems/internal/zlm"
 )
 
+// Version 服务版本号（由 main 在启动时设置）。
+var Version = "dev"
+
 // Server 应用服务器。
 type Server struct {
 	cfg    *config.Config
@@ -42,6 +45,7 @@ func New(cfg *config.Config) *Server {
 		middleware.Recovery(),
 		middleware.Logger(),
 		middleware.ClientIPMiddleware(),
+		middleware.RequestOrigin(),
 		middleware.CORS(),
 	)
 
@@ -135,6 +139,10 @@ func (s *Server) registerRoutes() {
 	{
 		// 登录相关（免鉴权，登录行为纳入审计）
 		api.POST("/auth/login", middleware.Audit(logRepo), authH.Login)
+
+		// 系统初始化：首次打开后台注册首个超级管理员（免鉴权，仅无用户时可用）
+		api.GET("/setup/status", authH.SetupStatus)
+		api.POST("/setup", middleware.Audit(logRepo), authH.Setup)
 		api.POST("/auth/logout", middleware.Auth(jwtMgr), authH.Logout)
 
 		// 直播分享页（观众侧，免登录）
@@ -266,7 +274,8 @@ func (s *Server) registerRoutes() {
 			"code":    0,
 			"message": "ok",
 			"data": gin.H{
-				"time": time.Now().Format(time.RFC3339),
+				"time":    time.Now().Format(time.RFC3339),
+				"version": Version,
 			},
 		})
 	})

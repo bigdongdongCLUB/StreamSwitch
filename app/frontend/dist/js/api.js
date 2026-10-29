@@ -87,6 +87,9 @@ const del = (path) => request('DELETE', path)
 export const api = {
   // ---- 认证 ----
   login: (username, password) => post('/auth/login', { username, password }),
+  // 系统初始化（首次使用注册超级管理员）
+  setupStatus: () => get('/setup/status'),
+  setup: (username, password, nickname) => post('/setup', { username, password, nickname }),
   logout: () => post('/auth/logout'),
   profile: () => get('/auth/profile'),
   changePassword: (old_password, new_password) => post('/auth/password', { old_password, new_password }),
