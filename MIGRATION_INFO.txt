@@ -1,0 +1,26 @@
+打包时间: 2026-10-28 15:50:57
+源主机: rextianofbt (x86_64)
+livems: 流媒体管理系统 v1.0.0
+ZLM: 编译日期: 2026-10-26T16:24:22 当前git分支: master 
+数据库: live_rextian_com @ 127.0.0.1:3306
+素材打包: 是
+数据库行数:
+  hls_encrypt: 0
+  live_page: 1
+  play_domain: 3
+  play_format: 4
+  play_token: 54
+  stream: 1
+  stream_forward: 0
+  stream_proxy: 0
+  studio_material: 1
+  studio_task: 1
+  sys_config: 4
+  sys_log: 274
+  sys_permission: 58
+  sys_role: 3
+  sys_role_permission: 124
+  sys_user: 2
+  sys_user_role: 2
+  task_error_log: 19
+  traffic_stat: 2926

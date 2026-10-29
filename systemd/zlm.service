@@ -1,0 +1,26 @@
+[Unit]
+Description=ZLMediaKit 流媒体服务器
+Documentation=https://github.com/ZLMediaKit/ZLMediaKit
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/server/zlm
+ExecStart=/www/server/zlm/bin/MediaServer -c /www/server/zlm/conf/config.ini
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+# 允许自动重启的次数，10 次内失败则不再重启
+StartLimitBurst=10
+StartLimitIntervalSec=60
+# 优雅退出，等待 ZLM 发送 on_server_exited 回调
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=append:/www/server/zlm/log/stdout.log
+StandardError=append:/www/server/zlm/log/stdout.log
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

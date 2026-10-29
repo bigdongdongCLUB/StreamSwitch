@@ -1,0 +1,357 @@
+/* =============================================================================
+   流媒体管理系统 - 全局样式
+   ============================================================================= */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app { height: 100%; }
+
+/* ---------- 登录页 ---------- */
+.login-page {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1f2d3d 0%, #2b5876 50%, #4e4376 100%);
+}
+.login-card {
+  width: 400px;
+  padding: 36px 36px 28px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+}
+.login-title {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 600;
+  text-align: center;
+  color: #303133;
+}
+.login-subtitle {
+  margin: 0 0 28px;
+  font-size: 13px;
+  text-align: center;
+  color: #909399;
+}
+
+/* ---------- 主布局 ---------- */
+.layout { height: 100%; }
+.layout-aside {
+  background: #001529;
+  transition: width 0.25s;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.layout-logo {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.layout-logo .logo-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f56c6c;
+  box-shadow: 0 0 8px #f56c6c;
+  flex: none;
+}
+.layout-aside .el-menu { border-right: none; flex: 1; }
+
+.layout-header {
+  height: 60px;
+  background: #fff;
+  border-bottom: 1px solid #e4e7ed;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 16px;
+}
+.layout-header .fold-btn { cursor: pointer; font-size: 18px; color: #606266; }
+.layout-header .breadcrumb { flex: 1; }
+.layout-header .user-name { cursor: pointer; color: #303133; font-size: 14px; }
+
+.layout-main {
+  background: #f0f2f5;
+  padding: 16px;
+  overflow-y: auto;
+  height: calc(100% - 60px);
+}
+
+/* ---------- 页面通用 ---------- */
+.page-card { margin-bottom: 16px; }
+.page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.page-toolbar .spacer { flex: 1; }
+.pager { margin-top: 16px; display: flex; justify-content: flex-end; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+}
+.stat-card .stat-label { font-size: 13px; color: #909399; margin-bottom: 8px; }
+.stat-card .stat-value { font-size: 28px; font-weight: 600; color: #303133; }
+.stat-card .stat-value.green { color: #67c23a; }
+.stat-card .stat-value.red { color: #f56c6c; }
+.stat-card .stat-value.blue { color: #409eff; }
+.stat-card .stat-value.orange { color: #e6a23c; }
+
+.mono {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
+}
+.text-gray { color: #909399; }
+.text-danger { color: #f56c6c; }
+.text-success { color: #67c23a; }
+
+.url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.url-row .url-label {
+  flex: none;
+  width: 88px;
+  font-weight: 600;
+  color: #606266;
+  font-size: 13px;
+}
+.url-row .el-input__inner { font-family: Consolas, Menlo, monospace; font-size: 12px; }
+
+.desc-item-label { color: #909399; }
+
+/* 描述列表（流详情 / 日志详情 / 密钥详情）：标签列不换行、宽度随最长标签自适应，
+   值列可换行并允许长串（URL、密钥）在任意位置折断 */
+.el-descriptions__label.el-descriptions__cell {
+  white-space: nowrap;
+  width: 1%;              /* 表格布局下取内容宽度，不挤占值列 */
+  min-width: 72px;
+}
+.el-descriptions__content.el-descriptions__cell {
+  word-break: break-all;
+  min-width: 120px;       /* 双列布局时左侧值列不被长 URL 列挤成竖排（如 3840x2160 折成两行） */
+}
+
+/* ---------- 观众播放页（/p/:code） ---------- */
+.play-page {
+  min-height: 100%;
+  background: #0b0e14;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.play-container { width: 100%; max-width: 960px; }
+.play-status {
+  text-align: center;
+  color: #909399;
+  padding: 60px 0;
+}
+.play-status p { margin-top: 14px; font-size: 15px; }
+.play-password-card {
+  max-width: 400px;
+  margin: 10vh auto 0;
+  background: #fff;
+  border-radius: 12px;
+  padding: 32px 30px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+.play-title { font-size: 20px; font-weight: 600; color: #303133; text-align: center; }
+.play-sub { font-size: 13px; color: #909399; text-align: center; margin-top: 8px; }
+.play-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.play-title-sm { color: #e4e7ed; font-size: 17px; font-weight: 600; }
+.play-live-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #f56c6c; box-shadow: 0 0 8px #f56c6c;
+  animation: playBlink 1.2s infinite;
+}
+.play-live-badge {
+  background: #f56c6c; color: #fff; font-size: 11px; font-weight: 700;
+  padding: 1px 7px; border-radius: 4px; letter-spacing: 1px;
+}
+@keyframes playBlink { 50% { opacity: 0.35; } }
+.play-video {
+  width: 100%;
+  max-height: 72vh;
+  background: #000;
+  border-radius: 10px;
+}
+
+/* ---------- Element Plus 数字输入框窄宽度保护 ---------- */
+/* 防止栅格窄列中数字区被压缩到不可见 */
+.el-input-number { min-width: 110px; }
+.el-input-number .el-input { flex: 1; min-width: 50px; }
+.el-input-number .el-input__inner { text-align: left; }
+
+/* ---------- 表格操作列：按钮统一水平单行排列 ---------- */
+/* Element Plus 默认 el-button 之间 12px 外边距 + 文字按钮 11px 内边距，
+   多个按钮时宽度超过列宽就会折行成两排。这里收紧间距并禁止换行。 */
+.el-table .col-actions .cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  gap: 2px;
+  overflow: visible;
+}
+.el-table .col-actions .cell > span { display: inline-flex; }   /* tooltip 包裹层 */
+.el-table .col-actions .el-button { margin-left: 0 !important; }
+.el-table .col-actions .el-button.is-text {
+  padding: 4px 6px;
+  height: 24px;
+}
+.el-table .col-actions .el-button.is-text + .el-button.is-text { margin-left: 0 !important; }
+
+/* 卡片头部：标题与右侧操作同一行，窄屏可换行 */
+.el-card__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hdr-right { margin-left: auto; }
+
+/* ---------- 移动端适配（≤768px，与 store.isMobile 断点一致） ---------- */
+@media (max-width: 768px) {
+  /* 侧边栏改为抽屉：固定定位、默认滑出屏幕左侧，打开时滑入并压在遮罩之上 */
+  .layout.is-mobile .layout-aside {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 2001;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.3);
+  }
+  .layout.is-mobile .layout-aside.is-open { transform: translateX(0); }
+  .layout-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .layout-header { padding: 0 12px; gap: 10px; }
+  .layout-header .fold-btn { font-size: 20px; }
+  .layout-main { padding: 10px; }
+  .hide-xs { display: none !important; }
+
+  /* 卡片内边距收紧 */
+  .el-card__body { padding: 12px; }
+  .el-card__header { padding: 10px 12px; }
+  .page-card { margin-bottom: 10px; }
+
+  /* 工具栏：输入/下拉占满整行，按钮等分一行 */
+  .page-toolbar { gap: 8px; margin-bottom: 12px; }
+  .page-toolbar .spacer { display: none; }
+  .page-toolbar > .el-input,
+  .page-toolbar > .el-select,
+  .page-toolbar > .el-date-editor { width: 100% !important; flex: 1 1 100%; }
+  .page-toolbar > .el-button { flex: 1 1 auto; margin-left: 0 !important; }
+
+  /* 统计卡片两列 */
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px; }
+  .stat-card { padding: 14px; }
+  .stat-card .stat-value { font-size: 22px; }
+  .stat-card .stat-value[style] { font-size: 18px !important; }
+
+  /* 分页：居中、换行，隐藏每页条数选择 */
+  .pager { justify-content: center; margin-top: 12px; }
+  .pager .el-pagination { flex-wrap: wrap; justify-content: center; row-gap: 6px; }
+  .pager .el-pagination__sizes { display: none; }
+
+  /* 对话框：接近全宽、贴顶，内容区可滚动 */
+  .el-dialog {
+    width: 94% !important;
+    max-width: 94vw;
+    margin: 3vh auto 0 !important;
+  }
+  .el-dialog__body {
+    padding: 12px 14px;
+    max-height: 78vh;
+    overflow-y: auto;
+  }
+  .el-dialog__footer { padding: 8px 14px 12px; }
+  .el-message-box { width: 90vw !important; max-width: 420px; }
+
+  /* 表单：标签置于控件上方，控件占满整行（覆盖各处写死的 label-width） */
+  .el-dialog .el-form-item,
+  .layout-main .el-form:not(.el-form--inline) .el-form-item { display: block; }
+  .el-dialog .el-form-item__label,
+  .layout-main .el-form:not(.el-form--inline) .el-form-item__label {
+    width: auto !important;
+    height: auto;
+    line-height: 22px;
+    margin-bottom: 4px;
+    justify-content: flex-start;
+    text-align: left;
+    float: none;
+  }
+  .el-dialog .el-form-item__content,
+  .layout-main .el-form:not(.el-form--inline) .el-form-item__content { margin-left: 0 !important; }
+  .el-form .el-input[style*="width"],
+  .el-form .el-select[style*="width"],
+  .el-form .el-input-number[style*="width"] { width: 100% !important; }
+  .el-form--inline .el-form-item { display: flex; margin-right: 0; width: 100%; }
+
+  /* 地址行：标签独占一行 */
+  .url-row { flex-wrap: wrap; }
+  .url-row .url-label { width: 100%; }
+  .url-row .el-input { flex: 1; min-width: 0; }
+
+  /* 描述列表 / 标签页 / 图表 */
+  .el-tabs__header { margin-bottom: 10px; }
+  .chart-box { height: 220px !important; }
+
+  /* 登录页 */
+  .login-card { width: 92%; max-width: 400px; padding: 28px 22px 22px; }
+
+  /* 播放页 */
+  .play-page { padding: 10px; }
+  .play-password-card { padding: 24px 18px; margin-top: 6vh; }
+}
+
+/* 超窄屏（≤480px）进一步压缩 */
+@media (max-width: 480px) {
+  .layout-logo { font-size: 15px; }
+  .stat-card .stat-label { font-size: 12px; }
+  .pager .el-pagination__total { display: none; }
+  .el-table { font-size: 12px; }
+}

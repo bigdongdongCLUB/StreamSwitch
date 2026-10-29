@@ -1,0 +1,102 @@
+# =============================================================================
+#  流媒体管理系统 - 配置文件模板
+#  复制为 config.yaml 后按实际情况修改：
+#      cp configs/config.example.yaml configs/config.yaml
+#
+#  所有配置项均可用环境变量覆盖（环境变量优先），例如：
+#      APP_MYSQL_PASSWORD=xxx
+#      APP_ZLM_SECRET=xxx
+#      APP_SERVER_PORT=8090
+# =============================================================================
+
+server:
+  host: 0.0.0.0            # 监听地址
+  port: 8090               # 监听端口（宝塔 Nginx 反代到该端口）
+  mode: release            # gin 运行模式: debug / release
+  trusted_proxies:         # 可信代理IP（用于取真实客户端IP）
+    - 127.0.0.1
+    - "::1"
+  enable_swagger: false
+  read_timeout: 30         # 读超时(秒)
+  write_timeout: 30        # 写超时(秒)
+  shutdown_timeout: 10     # 优雅退出等待(秒)
+  static_dir: ""           # 留空则使用 frontend.dist_dir
+  pprof_addr: ""           # Go pprof 诊断地址，排障时填 127.0.0.1:6060（勿暴露公网）
+
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  user: live_rextian_com
+  password: "CHANGE_ME_mysql_password"   # 改成你的数据库密码
+  database: live_rextian_com
+  charset: utf8mb4
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime: 3600  # 连接最大存活(秒)
+  parse_time: true
+
+redis:
+  host: 127.0.0.1
+  port: 6379
+  password: ""             # 宝塔 Redis 若设了密码请填写
+  db: 0
+  pool_size: 20
+  dial_timeout: 5
+  read_timeout: 3
+  write_timeout: 3
+  prefix: "livems:"        # Redis key 前缀
+
+jwt:
+  secret: "CHANGE_ME_livems_jwt_secret_please_change_it"   # 生产环境务必修改
+  issuer: livems
+  expire_hour: 24          # 后台登录令牌有效期(小时)
+
+zlm:
+  base_url: "http://127.0.0.1:8080"    # ZLMediaKit 的 HTTP API 地址
+  secret: "CHANGE_ME_zlm_api_secret"  # 需与 ZLM config.ini 的 api.secret 一致（不可用 ZLM 内置默认值）
+  app: live                # 默认 app
+  vhost: "__defaultVhost__"
+  timeout: 10              # API 调用超时(秒)
+  hook_path: /index/hook   # 本服务接收 ZLM 回调的路径前缀
+  sync_secs: 30            # 定期与 ZLM 同步流状态的间隔(秒)
+  rtmp_port: 1935          # 对外 RTMP 端口
+  rtmps_port: 0
+
+hls:
+  upstream_url: "http://127.0.0.1:8080"  # 回源地址（ZLMediaKit 的 HTTP 端口）
+  zlm_www_dir: "/www/server/zlm/bin/www" # ZLM 的 HLS 落盘目录，配置后加密代理优先直读文件（同机部署建议配置）
+  key_dir: "./data/hls_key"              # HLS 密钥存放目录
+  cache_dir: "./data/hls_cache"           # 加密切片缓存目录
+  default_expire_sec: 0                  # 密钥默认有效期(秒)，0=永久
+  iv_strategy: seq                       # IV 策略: seq(按RFC8216用媒体序号) / random
+
+auth:
+  enabled: true               # 是否开启播放鉴权
+  token_expire: 3600          # 播放令牌默认有效期(秒)
+  ip_bind_enabled: false      # 是否允许开启 IP 绑定鉴权
+  param_name: token           # 播放令牌在 URL 中的参数名
+  allow_empty: false          # 是否允许无令牌播放
+  allow_anonymous: false
+
+log:
+  level: info            # debug / info / warn / error
+  format: text           # text / json
+  output_file: ""        # 留空输出到 stdout（systemd 会自动收集到 journal）
+  max_size: 100          # 预留字段
+  max_backups: 7
+  max_age: 30
+
+frontend:
+  dist_dir: "../frontend/dist"   # 前端构建产物目录
+
+nginx:                              # 证书管理（后台「域名配置」页可查看/上传/部署证书）
+  vhost_conf: "/www/server/panel/vhost/nginx/live.rextian.com.conf"
+  cert_dir: "/www/server/panel/vhost/cert"
+  reload_cmd: "nginx -s reload"
+
+studio:                             # 制播管理（滚动字幕/Logo压制、本地视频轮播）
+  ffmpeg_path: "./bin/tools/ffmpeg"
+  ffprobe_path: "./bin/tools/ffprobe"
+  font_file: "./assets/fonts/NotoSansSC-Regular.otf"
+  data_dir: "./data/studio"
+  push_base: "rtmp://127.0.0.1:1935"

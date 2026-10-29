@@ -1,0 +1,31 @@
+# ---- 密钥 / 证书 / 私有配置（绝不入库）----
+certs/
+deploy-arm64/livems_key
+deploy-arm64/livems_key.pub
+deploy-arm64/.env.local
+deploy-arm64/SITE-NOTES.local.md
+deploy-arm64/prof/
+app/backend/configs/config.yaml
+arm64/config.yaml.deployed
+app/backend/data/hls_key/
+
+# ---- 数据库导出（含用户密码哈希、令牌、日志）----
+db/
+db-latest/
+
+# ---- 素材 / 缓存 / 日志 ----
+app/backend/data/
+app/backend/logs/
+
+# ---- 二进制产物（体积大，可由源码重新编译；x86 原包见迁移包）----
+app/backend/bin/
+zlm/bin/
+arm64/livems-arm64
+arm64/MediaServer-arm64
+
+# ---- 系统 / 编辑器 ----
+.DS_Store
+._*
+.deploy-tmp/
+.claude/
+*.log
