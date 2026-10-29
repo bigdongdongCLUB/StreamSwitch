@@ -123,6 +123,7 @@ tools/              运维诊断与测试脚本（读取 tools/.env.local，见 
 ```
 
 - **发布**：推送 `v*` 标签后，GitHub Actions 分别在 x86_64 与 ARM64 上编译 livems 与 ZLMediaKit 并打包，随后在全新的 Ubuntu 22.04 / 24.04（x86_64）与 Ubuntu 22.04（ARM64）上自动执行「安装 → 注册首个管理员 → 推流播放 → 重置密码 → 改端口 → 升级 → 卸载」全流程测试，全部通过才发布 Release。
+  Release 说明取自标签说明，发布时把本版更新内容写进标签：`git tag -a v1.2.0 -F 更新说明.md && git push origin v1.2.0`（说明用 Markdown，安装方法会自动附在后面）。
 - **本地打包**：
   ```bash
   (cd app/backend && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=1.1.0" -o /tmp/livems ./cmd/server)
@@ -130,31 +131,8 @@ tools/              运维诊断与测试脚本（读取 tools/.env.local，见 
   ```
 - **后端命令行**：`livems -migrate`（仅建表/升级）、`livems -list-users`、`livems -reset-password -user <用户名>`（密码经环境变量 `LIVEMS_NEW_PASSWORD` 传入）、`livems -version`。
 
-## 改动记录
-
-### v1.1.0 一键部署
-- 中文菜单一键部署脚本：自动识别架构、安装依赖，安装 / 升级 / 端口设置 / 卸载 / 重置密码；无人值守参数；升级自动备份。
-- 取消默认 `admin/admin123` 账号：首次打开后台强制注册，第一个用户为超级管理员（`/api/v1/setup`，命名锁防并发）。
-- 后端启动时自动建表、补齐缺失列、写入内置角色权限，安装/升级不再需要手动导入 SQL。
-- 未配置播放域名时用当前访问地址生成播放/推流地址（`X-Forwarded-Host`）。
-- 双架构发布包与 CI 全流程安装测试。
-
-### 前端
-1. 表格「操作」列按钮统一单行水平排列；描述列表标签单行不换行。
-2. 证书「删除」按钮使用中置灰并提示原因；证书上传支持选择文件（自动识别证书/私钥）。
-3. 移动端适配（≤768px）：抽屉式侧边栏、窄屏工具栏/对话框/表单/分页。
-4. 素材上传进度 100% 后显示落盘提示。
-
-### 后端
-1. 大文件素材上传改为流式写盘（660 MB：76s → 3.4s），审计中间件不再读取上传体，上传接口单独放宽超时。
-2. 修复编辑制播任务报 `sql: expected 21 arguments, got 23`；编辑运行中任务后可正确重启。
-3. 修复流「状态」开关禁用后推流不断开（`close_streams`）。
-4. 修复无人观看时仪表盘观看人数非 0。
-5. 接口错误提示中文化（数据库/网络底层报错自动转为中文，原文记日志）。
-6. 可选 `server.pprof_addr` 诊断端口。
-
-### 网络
-- `tools/policy-route.sh`：主机默认网关是另一台代理网关（如 Surge 网关模式）时，修复路由器端口映射进来的连接回包走错路的问题（nftables 按入站 MAC 打标 + 策略路由），`--uninstall` 可回滚。
+## 版本更新
+各版本的更新内容见 [Releases](https://github.com/bigdongdongCLUB/StreamSwitch/releases)。
 
 ## 安全说明
 - 数据库密码、JWT 与 ZLM 密钥在安装时随机生成，保存在 `/opt/streamswitch/install.env` 与配置文件中（权限 600）。

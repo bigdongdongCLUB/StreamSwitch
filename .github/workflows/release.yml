@@ -127,11 +127,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -la dist
-          gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --title "StreamSwitch ${GITHUB_REF_NAME}" \
-            --notes "一键安装（Ubuntu 22.04+ / Debian 12+，x86_64 / ARM64 自动识别）：
-
-          \`\`\`bash
-          bash <(curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install.sh)
-          \`\`\`
-
-          离线安装：下载对应架构的 \`streamswitch-linux-<arch>.tar.gz\`，解压后执行 \`sudo bash streamswitch/install.sh\`。"
+          # Release 说明 = 附注标签的说明（本版更新内容）+ 安装方法
+          ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${GITHUB_REF_NAME}")
+          if [[ $(jq -r .object.type <<<"$ref") == tag ]]; then
+            gh api "repos/${GITHUB_REPOSITORY}/git/tags/$(jq -r .object.sha <<<"$ref")" --jq .message \
+              | sed '/-----BEGIN PGP SIGNATURE-----/,$d' > notes.md
+          else
+            : > notes.md   # 轻量标签没有说明
+          fi
+          [[ -s notes.md ]] || echo "（本版未填写更新说明）" > notes.md
+          {
+            echo
+            echo "## 安装 / 升级"
+            echo
+            echo "一键安装（Ubuntu 22.04+ / Debian 12+，x86_64 / ARM64 自动识别）；已安装的再次执行即为升级："
+            echo
+            echo '```bash'
+            echo "bash <(curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install.sh)"
+            echo '```'
+            echo
+            echo '离线安装：下载对应架构的 `streamswitch-linux-<arch>.tar.gz`，解压后执行 `sudo bash streamswitch/install.sh`。'
+          } >> notes.md
+          cat notes.md
+          gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" \
+            --title "StreamSwitch ${GITHUB_REF_NAME}" --notes-file notes.md

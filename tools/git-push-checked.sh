@@ -13,7 +13,7 @@ if [[ -f "$LOCAL" ]]; then
   EXTRA=$(grep -vE '^\s*(#|$)' "$LOCAL" | paste -sd'|' -)
   [[ -n "$EXTRA" ]] && PATTERN="$PATTERN|$EXTRA"
 else
-  echo "提示: 未找到 $LOCAL，仅做通用扫描（建议把站点真实 IP/密码/密钥写入该文件）"
+  echo "提示: 未找到 ${LOCAL}，仅做通用扫描（建议把站点真实 IP/密码/密钥写入该文件）"
 fi
 git add -A
 HITS=$(git diff --cached --name-only --diff-filter=ACMR | xargs grep -lIE "$PATTERN" 2>/dev/null || true)
