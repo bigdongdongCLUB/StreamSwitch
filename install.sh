@@ -248,6 +248,9 @@ pick_port() {
   done
 }
 
+# 等待端口释放（nginx reload 后旧监听由 master 异步关闭），最多约 5 秒
+wait_port_free() { local i; for i in $(seq 1 10); do port_in_use "$1" || return 0; sleep 0.5; done; return 1; }
+
 # 内部端口：从默认值起找一个空闲端口
 free_port() {
   local p=$1 own=${2:-}
@@ -911,6 +914,16 @@ do_port() {
     "UPDATE sys_config SET config_val=JSON_SET(config_val,'\$.push_port',$RTMP_PORT) WHERE config_key='ingress' AND JSON_VALID(config_val)" 2>/dev/null || true
   open_firewall
   start_services
+  # 确认旧端口已释放：nginx 偶尔保留旧监听，必要时完整重启
+  local p
+  for p in "$oh" "$os"; do
+    [[ $p == "$HTTP_PORT" || $p == "$HTTPS_PORT" ]] && continue
+    if ! wait_port_free "$p"; then systemctl restart nginx; wait_port_free "$p" || warn "旧端口 $p 仍在监听，请检查是否被其他程序占用"; fi
+  done
+  for p in "$orr" "$ors"; do
+    [[ $p == 0 || $p == "$RTMP_PORT" || $p == "$RTSP_PORT" ]] && continue
+    wait_port_free "$p" || warn "旧端口 $p 仍在监听，请检查是否被其他程序占用"
+  done
   ok "端口已更新"
   warn "如已在路由器做了端口映射、或在后台「域名配置」中填写过端口，请同步修改"
   print_summary

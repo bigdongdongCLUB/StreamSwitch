@@ -58,6 +58,7 @@ SS_HTTP_PORT=$P2 SS_HTTPS_PORT=$S2 SS_RTMP_PORT=$R2 SS_RTSP_PORT=0 sudo -E bash 
 curl -fsS $H:$P2/health | grep -q '"code":0'
 curl -fsSk https://127.0.0.1:$S2/health | grep -q '"code":0'
 ss -ltn | grep -q ":$R2 "
+for i in $(seq 1 20); do ss -ltn | grep -q ":$P1 " || break; sleep 0.5; done
 if ss -ltn | grep -q ":$P1 "; then echo "旧端口 $P1 仍在监听"; exit 1; fi
 end
 
