@@ -31,6 +31,8 @@ NGX_CONF="/etc/nginx/conf.d/streamswitch.conf"
 BIN_LINK="/usr/local/bin/streamswitch"
 LOGROTATE="/etc/logrotate.d/streamswitch"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
+# 统一使用 C.UTF-8：中文按字符处理，且 apt 输出为英文便于解析进度
+case $(locale -a 2>/dev/null || true) in *C.utf8*|*C.UTF-8*) export LC_ALL=C.UTF-8 ;; esac
 
 # ----------------------------------------------------------------------------- 输出
 if [[ -t 1 ]]; then
@@ -44,6 +46,116 @@ warn() { echo "${C_Y} !${C_0} $*" >&2; }
 die()  { echo "${C_R} ✘ $*${C_0}" >&2; exit 1; }
 # 出错提示只在主进程打印一次（$(...) 子进程中的失败会冒泡到主进程）
 trap 'rc=$?; if [[ $rc -ne 0 && $BASH_SUBSHELL -eq 0 && -z ${_SS_ERR:-} ]]; then _SS_ERR=1; echo "${C_R} ✘ 执行中断（第 $LINENO 行，退出码 $rc）。可重新运行本脚本，已完成的步骤会自动跳过。${C_0}" >&2; fi' ERR
+
+# ----------------------------------------------------------------------------- 显示宽度 / 进度
+SS_LOG=/tmp/streamswitch-install.log
+
+# 终端显示宽度：中文等全角字符占 2 列。与 locale 无关，按 UTF-8 字节推算——
+# 字符数 = 去掉续字节(0x80-0xBF)后的字节数；ASCII 1 字节宽 1 列，中文 3 字节宽 2 列。
+# （只用于 ASCII + 中文的文本；制表符号 ═║ 是 3 字节但只占 1 列，不要传进来）
+dwidth() {
+  local bytes chars
+  bytes=$(printf '%s' "$1" | LC_ALL=C wc -c)
+  chars=$(printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c)
+  echo $(( chars + (bytes - chars) / 2 ))
+}
+# repeat 字符 次数
+repeat() { local s; printf -v s '%*s' "$2" ''; printf '%s' "${s// /$1}"; }
+
+term_cols() {
+  local c=
+  [[ -r $TTY ]] && c=$( { stty size <$TTY; } 2>/dev/null | awk '{print $2}' || true)
+  [[ $c =~ ^[0-9]+$ && $c -ge 40 ]] || c=80
+  echo "$c"
+}
+fmt_secs() { printf '%02d:%02d' $(( $1 / 60 )) $(( $1 % 60 )); }
+fmt_mb() { printf '%d.%dMB' $(( $1 / 1048576 )) $(( $1 % 1048576 * 10 / 1048576 )); }
+apt_cache_bytes() { local x; x=$(du -sb /var/cache/apt/archives 2>/dev/null || true); echo "${x%%[[:space:]]*}"; }
+
+# run_progress "说明" 命令 [参数...]
+#   后台执行命令（输出写入 $SS_LOG），前台显示进度，避免长时间无输出被误认为卡死：
+#   - 命令向 fd 3 写 apt 状态（-o APT::Status-Fd=3）时显示真实百分比与当前软件包；
+#   - 否则显示旋转指示、已读取的软件源索引数或日志最新一行；
+#   - 终端中原地刷新一行；非终端（日志/CI）每 15 秒输出一行。
+run_progress() {
+  local title=$1; shift
+  local lg st pid t0=$SECONDS rc=0 i=0 tty= cols spin='|/-\' last=-15
+  lg=$(mktemp /tmp/streamswitch-step.XXXXXX); st=$(mktemp /tmp/streamswitch-status.XXXXXX)
+  [[ -t 1 ]] && tty=1
+  cols=$(term_cols)
+  "$@" >"$lg" 2>&1 3>"$st" &
+  pid=$!
+  # Ctrl+C：连同后台命令一起结束（非交互 shell 中后台进程默认忽略 SIGINT）
+  trap 'kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; cat "$lg" >>"$SS_LOG"; rm -f "$lg" "$st"; printf "\n"; die "已中断：$title"' INT TERM
+  local line kind a p rest pct msg verb pkg n ll el bar fill head base cur
+  base=$(apt_cache_bytes); base=${base:-0}
+  while kill -0 "$pid" 2>/dev/null; do
+    pct=; msg=
+    line=$(tail -n 1 "$st" 2>/dev/null || true)
+    IFS=: read -r kind a p rest <<<"$line"
+    case $kind in
+      dlstatus)
+        pct=${p%%.*}
+        if [[ $rest =~ file\ ([0-9]+)\ of\ ([0-9]+) ]]; then msg="下载软件包 ${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"; else msg="下载软件包"; fi
+        # apt 只在每个文件开始时更新百分比：附上实时已下载量与平均速度，大文件下载时也能看到在动
+        cur=$(apt_cache_bytes)
+        if [[ ${cur:-0} -gt $base ]]; then
+          el=$(( SECONDS - t0 > 0 ? SECONDS - t0 : 1 ))
+          msg="$msg · 已下载 $(fmt_mb $(( cur - base ))) · $(fmt_mb $(( (cur - base) / el )))/s"
+        fi ;;
+      pmstatus)
+        pct=${p%%.*}
+        case $rest in
+          Preparing*) verb="准备" ;; Unpacking*) verb="解包" ;; Installing*) verb="安装" ;;
+          Configuring*|Preparing\ to\ configure*) verb="配置" ;; Installed*) verb="已安装" ;;
+          Removing*|Removed*) verb="移除" ;; *) verb="处理" ;;
+        esac
+        pkg=$a; msg="$verb $pkg" ;;
+    esac
+    if [[ -z $msg ]]; then
+      n=$(grep -cE '^(Get|Hit|Ign|获取|命中|忽略):' "$lg" 2>/dev/null || true)
+      ll=$(tail -n 1 "$lg" 2>/dev/null || true); ll=${ll##*$'\r'}
+      case $ll in
+        *"Waiting for cache lock"*|*"Could not get lock"*) msg="等待系统其他软件更新进程结束（如 unattended-upgrades）" ;;
+        *"Reading package lists"*)      msg="读取软件包列表" ;;
+        *"Building dependency tree"*)   msg="分析依赖关系" ;;
+        *"Reading state information"*)  msg="读取已安装软件状态" ;;
+        *"Connecting to"*|*"Waiting for headers"*) msg="连接软件源" ;;
+        *"Selecting previously"*|*"Preparing to unpack"*|*"Unpacking"*) msg="解包软件包" ;;
+        *"Setting up"*)                 msg="配置软件包" ;;
+        *"Processing triggers"*)        msg="处理系统触发器" ;;
+        *)
+          if [[ ${n:-0} -gt 0 ]]; then msg="已读取 $n 个软件源索引"; else msg="准备中"; fi ;;
+      esac
+      if [[ $msg == "读取软件包列表" && ${n:-0} -gt 0 ]]; then msg="已读取 $n 个软件源索引，正在整理"; fi
+    fi
+    el=$(( SECONDS - t0 ))
+    if [[ -n $tty ]]; then
+      if [[ $pct =~ ^[0-9]+$ ]]; then
+        (( pct > 100 )) && pct=100
+        fill=$(( pct * 24 / 100 ))
+        bar="[$(repeat '#' "$fill")$(repeat '.' $(( 24 - fill )))] $(printf '%3d%%' "$pct")"
+      else
+        bar="[$(repeat ' ' $(( i % 21 )))<=>$(repeat ' ' $(( 21 - i % 21 )))]     "
+      fi
+      head="  ${spin:i%4:1} $bar  "
+      # 截断说明文字，保证整行不超过终端宽度（不换行才能原地刷新）
+      local room=$(( cols - $(dwidth "$head") - 10 ))
+      while [[ -n $msg ]] && (( $(dwidth "$msg") > room )); do msg=${msg:0:${#msg}-2}; done
+      printf '\r%s%s  %s\033[K' "$head" "$msg" "$(fmt_secs "$el")"
+    elif (( el - last >= 15 )); then
+      last=$el
+      echo "    … ${pct:+$pct% }${msg:-进行中}（已用时 $(fmt_secs "$el")）"
+    fi
+    sleep 0.5; i=$(( i + 1 ))
+  done
+  wait "$pid" || rc=$?
+  trap - INT TERM
+  cat "$lg" >>"$SS_LOG"; rm -f "$lg" "$st"
+  [[ -n $tty ]] && printf '\r\033[K'
+  if [[ $rc -eq 0 ]]; then ok "$title（用时 $(fmt_secs $(( SECONDS - t0 )))）"; fi
+  return "$rc"
+}
 
 # ----------------------------------------------------------------------------- 交互
 TTY=/dev/tty
@@ -196,16 +308,29 @@ switch_apt_mirror() {
   done
 }
 
+APT_OPTS=(-q -o APT::Status-Fd=3 -o DPkg::Lock::Timeout=900 -o Dpkg::Options::=--force-confold)
+
 apt_install() {
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -q -o Dpkg::Options::=--force-confold "$@" >/tmp/streamswitch-apt.log 2>&1 \
-    || { tail -n 20 /tmp/streamswitch-apt.log >&2; die "安装软件包失败：$*（完整日志 /tmp/streamswitch-apt.log）"; }
+  local missing=() p
+  for p in "$@"; do
+    [[ $(dpkg-query -W -f='${Status}' "$p" 2>/dev/null || true) == "install ok installed" ]] || missing+=("$p")
+  done
+  if [[ ${#missing[@]} -eq 0 ]]; then ok "依赖软件包均已安装"; return; fi
+  info "需要安装 ${#missing[@]} 个软件包：${missing[*]}"
+  run_progress "软件包安装完成" env DEBIAN_FRONTEND=noninteractive apt-get install -y "${APT_OPTS[@]}" "${missing[@]}" \
+    || { tail -n 20 "$SS_LOG" >&2; die "安装软件包失败：${missing[*]}（完整日志 $SS_LOG）"; }
 }
 
 install_deps() {
   info "安装依赖软件（nginx / redis / ffmpeg / 数据库 等，首次安装可能需要几分钟）"
   if [[ "${SS_APT_MIRROR:-}" == "tuna" ]]; then switch_apt_mirror; fi
-  DEBIAN_FRONTEND=noninteractive apt-get update -q >/tmp/streamswitch-apt.log 2>&1 \
-    || { tail -n 20 /tmp/streamswitch-apt.log >&2; die "apt-get update 失败（可设置 SS_APT_MIRROR=tuna 使用国内镜像后重试）"; }
+  : >"$SS_LOG"
+  # 上次安装被中断时 dpkg 可能处于未配置状态，先修复
+  if [[ -n $(dpkg --audit 2>/dev/null || true) ]]; then
+    run_progress "修复上次未完成的软件包配置" env DEBIAN_FRONTEND=noninteractive dpkg --configure -a || true
+  fi
+  run_progress "软件源索引已更新" env DEBIAN_FRONTEND=noninteractive apt-get update "${APT_OPTS[@]}" \
+    || { tail -n 20 "$SS_LOG" >&2; die "apt-get update 失败（可设置 SS_APT_MIRROR=tuna 使用国内镜像后重试）"; }
   local pkgs=(curl ca-certificates tar gzip openssl iproute2 logrotate nginx redis-server ffmpeg)
   # 数据库：已有 MySQL/MariaDB 则复用，否则 Ubuntu 装 mysql-server、Debian 装 mariadb-server
   if command -v mysqld >/dev/null || command -v mariadbd >/dev/null; then
@@ -249,7 +374,8 @@ fetch_package() {
     local proxy=${GH_PROXY:-}
     while true; do
       info "下载安装包（$ARCH）：${proxy}$url"
-      if curl -fL --retry 3 --connect-timeout 15 -o "$PKG_TMP/pkg.tar.gz" "${proxy}$url"; then break; fi
+      local cprog=(-sS); [[ -t 2 ]] && cprog=(--progress-bar)
+      if curl -fL "${cprog[@]}" --retry 3 --connect-timeout 15 -o "$PKG_TMP/pkg.tar.gz" "${proxy}$url"; then break; fi
       warn "下载失败"
       interactive || die "无法下载安装包，可设置 GH_PROXY=<GitHub 加速前缀> 或 SS_PACKAGE=<本地安装包路径> 后重试"
       proxy=$(ask "可输入 GitHub 加速前缀重试（如 https://ghfast.top/ ，留空退出）" "")
@@ -274,6 +400,10 @@ cur_version() { cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "未知"; }
 mysql_root() {
   if [[ -n ${MYSQL_ROOT_PASS:-} ]]; then MYSQL_PWD=$MYSQL_ROOT_PASS mysql -uroot -h127.0.0.1 "$@"
   else mysql -uroot "$@"; fi
+}
+
+dump_db() {
+  MYSQL_PWD=$DB_PASS mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --single-transaction --no-tablespaces "$DB_NAME" | gzip >"$1"
 }
 
 ensure_mysql_root() {
@@ -627,6 +757,7 @@ restore_kept_data() {
 }
 
 start_services() {
+  local spin_chars='|/-\'
   info "启动服务"
   systemctl restart "$SVC_ZLM"
   sleep 1
@@ -634,8 +765,10 @@ start_services() {
   local i
   for i in $(seq 1 40); do
     curl -fsS --max-time 2 "http://127.0.0.1:$APP_PORT/health" >/dev/null 2>&1 && break
+    [[ -t 1 ]] && printf '\r  %s 等待后端就绪… %ds\033[K' "${spin_chars:i%4:1}" "$i"
     sleep 1
   done
+  [[ -t 1 ]] && printf '\r\033[K'
   if ! curl -fsS --max-time 2 "http://127.0.0.1:$APP_PORT/health" >/dev/null 2>&1; then
     tail -n 20 "$INSTALL_DIR/backend/logs/livems.log" >&2 || true
     die "后端未能正常启动（日志：$INSTALL_DIR/backend/logs/livems.log）"
@@ -733,8 +866,7 @@ do_upgrade() {
   cp -a "$INSTALL_DIR/backend/configs/config.yaml" "$INSTALL_DIR/zlm/conf/config.ini" "$NGX_CONF" "$bk/" 2>/dev/null || true
   tar -czf "$bk/frontend.tar.gz" -C "$INSTALL_DIR/frontend" dist 2>/dev/null || true
   if command -v mysqldump >/dev/null; then
-    MYSQL_PWD=$DB_PASS mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --single-transaction --no-tablespaces "$DB_NAME" 2>/dev/null | gzip >"$bk/database.sql.gz" \
-      && ok "数据库已备份：$bk/database.sql.gz"
+    run_progress "数据库已备份：$bk/database.sql.gz" dump_db "$bk/database.sql.gz" || warn "数据库备份失败（继续升级）"
   fi
   ls -1dt "$INSTALL_DIR"/backup/*/ 2>/dev/null | tail -n +4 | xargs -r rm -rf   # 只保留最近 3 份
 
@@ -818,7 +950,7 @@ do_uninstall() {
     [[ -d $INSTALL_DIR/certs ]] && mv "$INSTALL_DIR/certs" "$keep/certs"
     [[ -f $ENV_FILE ]] && mv "$ENV_FILE" "$keep/install.env"
     if [[ -n ${DB_NAME:-} ]] && command -v mysqldump >/dev/null; then
-      MYSQL_PWD=$DB_PASS mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --single-transaction --no-tablespaces "$DB_NAME" 2>/dev/null | gzip >"$keep/database.sql.gz" || true
+      run_progress "数据库已备份到 $keep/database.sql.gz" dump_db "$keep/database.sql.gz" || true
     fi
     rm -rf "$INSTALL_DIR"
     ok "已卸载程序。数据库 ${DB_NAME:-streamswitch} 保留在本机；素材、证书与数据库备份已移至 $keep"
@@ -869,13 +1001,22 @@ do_status() {
   echo "  地址：http://$(lan_ip):$HTTP_PORT/ ｜ RTMP $RTMP_PORT"
 }
 
+# 标题框：按标题的实际显示宽度生成，保证左右边框对齐
+banner() {
+  local title="StreamSwitch 流媒体管理系统 一键部署" inner=46 w l r
+  w=$(dwidth "$title")
+  (( inner < w + 4 )) && inner=$(( w + 4 ))
+  l=$(( (inner - w) / 2 )); r=$(( inner - w - l ))
+  echo
+  printf '%s  ╔%s╗\n' "$C_B$C_W" "$(repeat ═ "$inner")"
+  printf '  ║%*s%s%*s║\n' "$l" '' "$title" "$r" ''
+  printf '  ╚%s╝%s\n' "$(repeat ═ "$inner")" "$C_0"
+}
+
 menu() {
   while true; do
     clear 2>/dev/null || true
-    echo "${C_B}${C_W}"
-    echo "  ╔══════════════════════════════════════════╗"
-    echo "  ║     StreamSwitch 流媒体管理系统 一键部署    ║"
-    echo "  ╚══════════════════════════════════════════╝${C_0}"
+    banner
     do_status
     echo
     echo "   1. 安装 / 升级"

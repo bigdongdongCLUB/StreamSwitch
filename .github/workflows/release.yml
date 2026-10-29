@@ -110,7 +110,7 @@ jobs:
         run: |
           sudo tail -n 80 /opt/streamswitch/backend/logs/livems.log || true
           sudo journalctl -u streamswitch-zlm -n 50 --no-pager || true
-          sudo tail -n 40 /tmp/streamswitch-apt.log || true
+          sudo tail -n 40 /tmp/streamswitch-install.log || true
 
   release:
     name: 发布
