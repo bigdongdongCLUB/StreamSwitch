@@ -869,6 +869,12 @@ restore_kept_data() {
   ok "已恢复素材与证书（数据库若仍保留在本机会自动沿用）"
 }
 
+# Nginx 已在后台 HTTP 端口转发到后端（最多等约 10 秒）
+nginx_forward_ok() {
+  local i; for i in $(seq 1 20); do curl -fsS --max-time 2 "http://127.0.0.1:$HTTP_PORT/health" >/dev/null 2>&1 && return 0; sleep 0.5; done
+  return 1
+}
+
 start_services() {
   local spin_chars='|/-\'
   info "启动服务"
@@ -888,7 +894,11 @@ start_services() {
   fi
   systemctl is-active --quiet "$SVC_ZLM" || { journalctl -u "$SVC_ZLM" -n 20 --no-pager >&2; die "ZLMediaKit 启动失败"; }
   systemctl reload nginx 2>/dev/null || systemctl restart nginx
-  curl -fsS --max-time 3 "http://127.0.0.1:$HTTP_PORT/health" >/dev/null || die "Nginx 未能转发到后端（端口 $HTTP_PORT）"
+  # reload 只是发出信号，新端口由 nginx 异步监听（加载 stream 等动态模块时更慢），轮询等待；仍不通则完整重启一次
+  if ! nginx_forward_ok; then
+    systemctl restart nginx
+    nginx_forward_ok || die "Nginx 未能转发到后端（端口 $HTTP_PORT）"
+  fi
   ok "服务运行正常：$SVC_ZLM、$SVC_APP、nginx"
   [[ ${RTMPS_PORT:-0} == 0 ]] || check_rtmps_tls
 }
