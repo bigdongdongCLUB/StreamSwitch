@@ -185,6 +185,11 @@ func (s *PlayService) validateDomain(d *models.PlayDomain) error {
 	if strings.TrimSpace(d.Host) == "" {
 		return fmt.Errorf("域名主机名不能为空")
 	}
+	h, err := normalizeHost("域名主机名", d.Host)
+	if err != nil {
+		return err
+	}
+	d.Host = h
 	if d.Schema == "" {
 		d.Schema = "http"
 	}

@@ -86,10 +86,12 @@ func (s *SettingsService) SaveIngress(ing *IngressConfig) error {
 	}
 	ing.PushHost = strings.TrimSpace(ing.PushHost)
 	if ing.PushHost != "" {
-		// 不允许带协议头、路径与端口（端口单独配置）
-		if strings.Contains(ing.PushHost, "://") || strings.Contains(ing.PushHost, "/") || strings.Contains(ing.PushHost, ":") {
-			return fmt.Errorf("推流主机只需填写域名或 IP，不要带协议、端口或路径")
+		// 只接受合法域名或 IPv4（不带协议、端口、路径），端口单独配置
+		h, err := normalizeHost("推流主机", ing.PushHost)
+		if err != nil {
+			return err
 		}
+		ing.PushHost = h
 	}
 	if ing.PushPort < 0 || ing.PushPort > 65535 {
 		return fmt.Errorf("对外端口需在 0-65535 之间（0 表示使用协议默认端口）")
