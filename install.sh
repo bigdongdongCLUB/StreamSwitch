@@ -616,17 +616,41 @@ remove_stream_conf() {
   return 0
 }
 
+# nginx 是否静态编译了 stream（configure 参数中有不带 =dynamic 的 --with-stream）
+stream_static() { [[ " $(nginx -V 2>&1) " =~ [[:space:]]--with-stream[[:space:]] ]]; }
+# stream 动态模块文件（--modules-path，缺省 /usr/lib/nginx/modules）
+stream_module_so() {
+  local p; p=$(nginx -V 2>&1 | grep -oE -- '--modules-path=[^ ]+' | cut -d= -f2 || true)
+  echo "${p:-/usr/lib/nginx/modules}/ngx_stream_module.so"
+}
+# 实测 stream + stream_ssl 是否可用：用一份独立的临时配置（含 TLS 的 stream server）执行 nginx -t
+stream_ssl_usable() {
+  local t load= rc=0
+  if ! stream_static; then [[ -f $(stream_module_so) ]] || return 1; load="load_module $(stream_module_so);"; fi
+  t=$(mktemp -d)
+  openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=rtmps-check" \
+    -keyout "$t/key.pem" -out "$t/cert.pem" >/dev/null 2>&1 || { rm -rf "$t"; return 1; }
+  cat > "$t/nginx.conf" <<EOF
+$load
+pid $t/nginx.pid;
+error_log $t/error.log;
+events {}
+stream { server { listen 127.0.0.1:1 ssl; ssl_certificate $t/cert.pem; ssl_certificate_key $t/key.pem; proxy_pass 127.0.0.1:1; } }
+EOF
+  nginx -t -q -p "$t" -c "$t/nginx.conf" >/dev/null 2>&1 || rc=$?
+  rm -rf "$t"; return $rc
+}
+
 # RTMPS 需要 nginx 的 stream + stream_ssl 模块：缺少时尝试安装 libnginx-mod-stream，仍不可用则关闭 RTMPS
+# 不能只看 nginx -V：Ubuntu 22.04 的 nginx 1.18 未列出 --with-stream，但可另装 libnginx-mod-stream 动态加载
 check_rtmps() {
   [[ ${RTMPS_PORT:-0} != 0 ]] || return 0
-  local v why=
-  v=$(nginx -V 2>&1 || true)
-  if [[ $v == *--with-stream=dynamic* ]] && ! stream_module_loaded; then
+  local why=
+  if ! stream_ssl_usable || { ! stream_static && ! stream_module_loaded; }; then
     ( apt_install libnginx-mod-stream ) || true   # 安装失败不中断，下面关闭 RTMPS
   fi
-  if [[ $v != *--with-stream* ]]; then why="当前 nginx 未编译 stream 模块"
-  elif [[ $v != *--with-stream_ssl_module* ]]; then why="当前 nginx 的 stream 模块不支持 SSL"
-  elif [[ $v == *--with-stream=dynamic* ]] && ! stream_module_loaded; then why="未能加载 nginx stream 模块（libnginx-mod-stream）"
+  if ! stream_ssl_usable; then why="当前 nginx 无法使用 stream SSL 模块（已尝试安装 libnginx-mod-stream）"
+  elif ! stream_static && ! stream_module_loaded; then why="未能加载 nginx stream 模块（libnginx-mod-stream）"
   elif other_stream_block; then why="nginx 配置中已有其他 stream {} 块"
   fi
   [[ -z $why ]] && return 0
