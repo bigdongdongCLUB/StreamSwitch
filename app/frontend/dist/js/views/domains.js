@@ -302,7 +302,7 @@ export default {
             </div>
           </el-form-item>
           <el-form-item label="推流域名" v-if="!ingress.follow_play_domain">
-            <el-input v-model="ingress.push_host" placeholder="如 live_push.example.com" class="mono"
+            <el-input v-model="ingress.push_host" placeholder="如 live.example.com" class="mono"
                       style="width:300px" :disabled="!canUpdate" />
             <div class="text-gray" style="font-size:12px">只填域名或 IP，不要带协议、端口或路径；留空则使用默认播放域名</div>
           </el-form-item>
