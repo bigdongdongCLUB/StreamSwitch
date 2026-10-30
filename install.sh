@@ -626,6 +626,9 @@ ${v6:+    listen [::]:$HTTPS_PORT ssl http2;}
         proxy_pass http://127.0.0.1:$APP_PORT;
         proxy_http_version 1.1;
         proxy_request_buffering off;
+        # 不缓冲请求体时，HTTP/2 的上传窗口取 max(本值, 64k)；默认值下高延迟链路（经代理/跨境）
+        # 上传被限制在约 64KB/RTT（RTT 170ms 时仅 0.4MB/s）。8m 只在有请求体时按需分配。
+        client_body_buffer_size 8m;
         proxy_read_timeout 1800s;
         proxy_send_timeout 1800s;
         $proxy_common
