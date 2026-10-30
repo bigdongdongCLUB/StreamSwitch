@@ -28,7 +28,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/bigdongdongCLUB/StreamSwitch
 
 ### 1. 安装 / 升级
 - **首次执行 = 安装**：自动识别架构并下载对应安装包，自动安装依赖（nginx、redis、ffmpeg、MySQL/MariaDB，已有则复用），建库建账号、生成全部密钥、配置 systemd 与 Nginx，启动并做健康检查。
-  过程中只需回答几个问题（直接回车即用默认值）：是否切换国内 apt 镜像、HTTP 端口（51880）、HTTPS 端口（51443）、RTMP 端口（1935）、RTSP 端口（554，填 0 关闭）；端口被占用会提示重新输入。若本机 MySQL 的 root 无法免密登录、或 Redis 设置了密码，会提示输入。
+  过程中只需回答几个问题（直接回车即用默认值）：是否切换国内 apt 镜像、HTTP 端口（51880）、HTTPS 端口（51443）、RTMP 端口（1935）、RTSP 端口（554，填 0 关闭）、RTMPS 加密推流端口（1936，填 0 关闭）；端口被占用会提示重新输入。若本机 MySQL 的 root 无法免密登录、或 Redis 设置了密码，会提示输入。
 - **再次执行 = 升级**：保留数据库、素材、证书与端口设置，先把当前程序、配置和数据库备份到 `/opt/streamswitch/backup/<时间>/`（保留最近 3 份），再替换程序并自动升级数据库结构。
 - 部署完成后打印**后台地址**、推流地址与需要在路由器映射的端口。
 
@@ -60,7 +60,7 @@ sudo streamswitch install             # 也可以直接带参数：install | por
 | 变量 | 说明 |
 |---|---|
 | `SS_YES=1` | 采用默认值，不提问（卸载时视为已确认） |
-| `SS_HTTP_PORT` `SS_HTTPS_PORT` `SS_RTMP_PORT` `SS_RTSP_PORT` | 端口（RTSP 填 0 关闭） |
+| `SS_HTTP_PORT` `SS_HTTPS_PORT` `SS_RTMP_PORT` `SS_RTSP_PORT` `SS_RTMPS_PORT` | 端口（RTSP、RTMPS 填 0 关闭） |
 | `SS_MYSQL_ROOT_PASSWORD` / `SS_REDIS_PASSWORD` | 本机 MySQL root 密码 / Redis 密码（需要时） |
 | `SS_APT_MIRROR=tuna` | apt 切换为清华镜像 |
 | `SS_PACKAGE` / `SS_VERSION` / `GH_PROXY` | 指定本地安装包或 URL / 指定版本 / GitHub 下载加速前缀 |
@@ -103,6 +103,7 @@ Nginx 站点：`/etc/nginx/conf.d/streamswitch.conf`；数据库：`streamswitch
 |---|---|---|
 | 51880 / 51443 | 后台与播放（HTTP / HTTPS） | 需要外网访问时在路由器映射 |
 | 1935 | RTMP 推流 / 播放 | 同上 |
+| 1936 | RTMPS 加密推流（可关闭） | 按需 |
 | 554 | RTSP（可关闭） | 按需 |
 | 18090 / 18080 | 后端 / ZLM 内部端口（被占用时自动顺延） | **不要**对外 |
 
@@ -110,6 +111,13 @@ Nginx 站点：`/etc/nginx/conf.d/streamswitch.conf`；数据库：`streamswitch
 
 ### 域名与证书
 默认**不需要配置域名**：未添加播放域名时，播放与推流地址自动使用浏览器当前访问的地址（如 `http://192.168.1.10:51880`）。
+
+### RTMPS 加密推流
+RTMPS 由 Nginx 的 stream 模块在 RTMPS 端口（默认 1936）完成 TLS 握手后，转发到本机 RTMP 端口，证书与站点 HTTPS 共用：在后台「域名配置 → SSL 证书」上传并应用证书后，HTTPS 与 RTMPS 同时生效，无需重启、不中断正在推流的直播。
+
+- OBS 推流：服务器填 `rtmps://<证书中的域名>:1936/live`，串流密钥填 `<流ID>?key=<推流Key>`。用自签名证书或域名不在证书内时，OBS 会因证书校验失败而连接不上。
+- 在后台「推流域名设置」中把推流协议选为 RTMPS 后，流详情里显示的推流地址即为 `rtmps://` 地址；本机未开启 RTMPS 端口时不能选择 RTMPS。
+- 开启 / 关闭 / 修改端口：`sudo streamswitch` →「端口设置」（填 0 关闭）。关闭后已保存的 RTMPS 推流设置自动改回 RTMP。
 需要正式域名时，登录后在「域名配置」中：上传 SSL 证书（支持直接选择 `fullchain.pem` / `privkey.pem` 文件）并「应用」，再添加推流/播放域名即可。
 
 ## 开发与构建
@@ -122,7 +130,7 @@ install.sh          一键部署脚本
 tools/              运维诊断与测试脚本（读取 tools/.env.local，见 .env.example）
 ```
 
-- **发布**：推送 `v*` 标签后，GitHub Actions 分别在 x86_64 与 ARM64 上编译 livems 与 ZLMediaKit 并打包，随后在全新的 Ubuntu 22.04 / 24.04（x86_64）与 Ubuntu 22.04（ARM64）上自动执行「安装 → 注册首个管理员 → 推流播放 → 重置密码 → 改端口 → 升级 → 卸载」全流程测试，全部通过才发布 Release。
+- **发布**：推送 `v*` 标签后，GitHub Actions 分别在 x86_64 与 ARM64 上编译 livems 与 ZLMediaKit 并打包，随后在全新的 Ubuntu 22.04 / 24.04（x86_64）与 Ubuntu 22.04（ARM64）上自动执行「安装 → 注册首个管理员 → 推流播放（RTMP / RTMPS）→ 换证书 → 重置密码 → 改端口 → 升级 → 关闭 RTMPS → 卸载」全流程测试，全部通过才发布 Release。
   Release 说明取自标签说明，发布时把本版更新内容写进标签：`git tag -a v1.2.0 -F 更新说明.md && git push origin v1.2.0`（说明用 Markdown，安装方法会自动附在后面）。
 - **本地打包**：
   ```bash
@@ -136,7 +144,7 @@ tools/              运维诊断与测试脚本（读取 tools/.env.local，见 
 
 ## 安全说明
 - 数据库密码、JWT 与 ZLM 密钥在安装时随机生成，保存在 `/opt/streamswitch/install.env` 与配置文件中（权限 600）。
-- 后端与 ZLM 内部端口仅供本机使用；对外请只开放 HTTP/HTTPS、RTMP（RTSP 按需）。
+- 后端与 ZLM 内部端口仅供本机使用；对外请只开放 HTTP/HTTPS、RTMP（RTMPS、RTSP 按需）。
 - 仓库不含任何站点私有信息；`tools/` 脚本的站点参数放在不入库的 `tools/.env.local`。
 
 ## License

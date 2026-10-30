@@ -11,7 +11,7 @@
 #
 #  无人值守（CI/批量部署）环境变量：
 #    SS_YES=1                 所有提问采用默认值（卸载时视为已确认）
-#    SS_HTTP_PORT / SS_HTTPS_PORT / SS_RTMP_PORT / SS_RTSP_PORT(0=关闭)
+#    SS_HTTP_PORT / SS_HTTPS_PORT / SS_RTMP_PORT / SS_RTSP_PORT(0=关闭) / SS_RTMPS_PORT(0=关闭)
 #    SS_MYSQL_ROOT_PASSWORD   本机 MySQL root 密码（root 无法免密登录时）
 #    SS_REDIS_PASSWORD        本机 Redis 密码（设置了 requirepass 时）
 #    SS_APT_MIRROR=tuna       apt 切换为清华镜像
@@ -28,6 +28,12 @@ ENV_FILE="$INSTALL_DIR/install.env"
 SVC_APP="streamswitch"
 SVC_ZLM="streamswitch-zlm"
 NGX_CONF="/etc/nginx/conf.d/streamswitch.conf"
+# RTMPS（Nginx stream TLS 终止）：stream {} 必须位于 nginx.conf 顶层。Debian/Ubuntu 的 nginx.conf 在顶层
+# include modules-enabled/*.conf，放在那里无需改动 nginx.conf；否则在 nginx.conf 末尾追加 include 行。
+NGX_MAIN="/etc/nginx/nginx.conf"
+NGX_MODS_DIR="/etc/nginx/modules-enabled"
+NGX_STREAM_MOD="$NGX_MODS_DIR/99-streamswitch-rtmps.conf"
+NGX_STREAM_ALT="/etc/nginx/streamswitch-rtmps.conf"
 BIN_LINK="/usr/local/bin/streamswitch"
 LOGROTATE="/etc/logrotate.d/streamswitch"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
@@ -267,9 +273,11 @@ load_env() {
   # 兼容旧版本 install.env 缺少的键
   : "${HTTP_PORT:=51880}" "${HTTPS_PORT:=51443}" "${RTMP_PORT:=1935}" "${RTSP_PORT:=554}"
   : "${APP_PORT:=18090}" "${ZLM_HTTP_PORT:=18080}" "${DB_HOST:=127.0.0.1}" "${DB_PORT:=3306}"
-  : "${REDIS_HOST:=127.0.0.1}" "${REDIS_PORT:=6379}" "${DB_SERVICE:=mysql}"
+  : "${REDIS_HOST:=127.0.0.1}" "${REDIS_PORT:=6379}" "${DB_SERVICE:=mysql}" "${RTMPS_PORT:=0}"
 }
 rtsp_txt() { [[ ${RTSP_PORT:-0} != 0 ]] && echo "、$RTSP_PORT" || true; }
+rtmps_txt() { [[ ${RTMPS_PORT:-0} != 0 ]] && echo "、$RTMPS_PORT" || true; }
+off_txt() { [[ ${1:-0} == 0 ]] && echo 已关闭 || echo "$1"; }
 
 save_env() {
   umask 077
@@ -279,6 +287,7 @@ HTTP_PORT=$HTTP_PORT
 HTTPS_PORT=$HTTPS_PORT
 RTMP_PORT=$RTMP_PORT
 RTSP_PORT=$RTSP_PORT
+RTMPS_PORT=$RTMPS_PORT
 APP_PORT=$APP_PORT
 ZLM_HTTP_PORT=$ZLM_HTTP_PORT
 DB_HOST=$DB_HOST
@@ -544,7 +553,7 @@ zlm:
   hook_path: /index/hook
   sync_secs: 30
   rtmp_port: $RTMP_PORT
-  rtmps_port: 0
+  rtmps_port: $RTMPS_PORT
 hls:
   upstream_url: "http://127.0.0.1:$ZLM_HTTP_PORT"
   zlm_www_dir: "$INSTALL_DIR/zlm/www"
@@ -569,6 +578,7 @@ nginx:
   vhost_conf: "$NGX_CONF"
   cert_dir: "$INSTALL_DIR/certs"
   reload_cmd: "nginx -s reload"
+  stream_conf: "$([[ $RTMPS_PORT != 0 ]] && stream_conf_path || true)"
 studio:
   ffmpeg_path: "/usr/bin/ffmpeg"
   ffprobe_path: "/usr/bin/ffprobe"
@@ -587,6 +597,77 @@ ensure_cert() {
     -addext "subjectAltName=IP:$(lan_ip),IP:127.0.0.1,DNS:localhost" \
     -keyout "$d/privkey.pem" -out "$d/fullchain.pem" >/dev/null 2>&1
   chmod 700 "$d"; chmod 600 "$d/privkey.pem"
+}
+
+# ----------------------------------------------------------------------------- RTMPS（Nginx stream）
+stream_conf_path() {
+  if grep -qE "^[[:space:]]*include[[:space:]]+$NGX_MODS_DIR/\\*\\.conf;" "$NGX_MAIN" 2>/dev/null; then echo "$NGX_STREAM_MOD"; else echo "$NGX_STREAM_ALT"; fi
+}
+stream_module_loaded() {
+  grep -Rqs --exclude='*streamswitch*' 'ngx_stream_module' "$NGX_MAIN" "$NGX_MODS_DIR/"
+}
+# 本系统以外已有顶层 stream {} 块时不能再加一个（nginx 不允许重复）
+other_stream_block() {
+  grep -RqsE --exclude='*streamswitch*' '^[[:space:]]*stream[[:space:]]*\{' "$NGX_MAIN" "$NGX_MODS_DIR/"
+}
+remove_stream_conf() {
+  rm -f "$NGX_STREAM_MOD" "$NGX_STREAM_ALT"
+  [[ -f $NGX_MAIN ]] && sed -i "\#^include $NGX_STREAM_ALT;#d" "$NGX_MAIN"
+  return 0
+}
+
+# RTMPS 需要 nginx 的 stream + stream_ssl 模块：缺少时尝试安装 libnginx-mod-stream，仍不可用则关闭 RTMPS
+check_rtmps() {
+  [[ ${RTMPS_PORT:-0} != 0 ]] || return 0
+  local v why=
+  v=$(nginx -V 2>&1 || true)
+  if [[ $v == *--with-stream=dynamic* ]] && ! stream_module_loaded; then
+    ( apt_install libnginx-mod-stream ) || true   # 安装失败不中断，下面关闭 RTMPS
+  fi
+  if [[ $v != *--with-stream* ]]; then why="当前 nginx 未编译 stream 模块"
+  elif [[ $v != *--with-stream_ssl_module* ]]; then why="当前 nginx 的 stream 模块不支持 SSL"
+  elif [[ $v == *--with-stream=dynamic* ]] && ! stream_module_loaded; then why="未能加载 nginx stream 模块（libnginx-mod-stream）"
+  elif other_stream_block; then why="nginx 配置中已有其他 stream {} 块"
+  fi
+  [[ -z $why ]] && return 0
+  warn "${why}，RTMPS 推流已关闭（RTMP 推流不受影响）"
+  RTMPS_PORT=0
+}
+
+# RTMPS 端口能完成 TLS 握手（nginx reload 异步生效，最多等约 5 秒）
+rtmps_handshake() { timeout 5 openssl s_client -connect "127.0.0.1:$RTMPS_PORT" </dev/null >/dev/null 2>&1; }
+check_rtmps_tls() {
+  local i; for i in $(seq 1 10); do rtmps_handshake && { ok "RTMPS 端口 $RTMPS_PORT TLS 握手正常"; return 0; }; sleep 0.5; done
+  warn "RTMPS 端口 $RTMPS_PORT 未能完成 TLS 握手，请检查：nginx -t、/var/log/nginx/error.log"
+}
+
+# RTMPS 监听：TLS 在 Nginx 终止后原样转发到本机 RTMP 端口。证书与站点 HTTPS 相同，
+# 后台「域名配置 → 应用证书」会同步替换本文件的 ssl_certificate 行并 reload，无需重启流媒体内核。
+write_stream_conf() { # 证书 私钥
+  remove_stream_conf
+  [[ ${RTMPS_PORT:-0} != 0 ]] || return 0
+  local f; f=$(stream_conf_path)
+  [[ $f == "$NGX_STREAM_ALT" ]] && echo "include $NGX_STREAM_ALT;" >>"$NGX_MAIN"
+  cat >"$f" <<EOF
+# 由 StreamSwitch 部署脚本生成：RTMPS 推流（TLS 终止后转发到本机 RTMP 端口 ${RTMP_PORT}）。
+# 端口请用 streamswitch 菜单修改；证书随后台「域名配置 → 应用证书」自动同步。
+stream {
+    server {
+        listen $RTMPS_PORT ssl;
+${v6:+        listen [::]:$RTMPS_PORT ssl;}
+        ssl_certificate     $1;
+        ssl_certificate_key $2;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_session_cache shared:STREAMSWITCH_RTMPS:5m;
+        ssl_session_timeout 10m;
+        ssl_handshake_timeout 15s;
+        proxy_pass 127.0.0.1:$RTMP_PORT;
+        proxy_connect_timeout 5s;
+        proxy_timeout 600s;
+    }
+}
+EOF
+  sed -i '/^$/d' "$f"
 }
 
 write_nginx_conf() {
@@ -668,6 +749,7 @@ ${v6:+    listen [::]:$HTTPS_PORT ssl http2;}
 }
 EOF
   sed -i '/^$/N;/^\n$/D' "$NGX_CONF"
+  write_stream_conf "$cert" "$key"
   nginx -t >/tmp/streamswitch-nginx.log 2>&1 || { cat /tmp/streamswitch-nginx.log >&2; die "Nginx 配置校验失败"; }
 }
 
@@ -733,7 +815,8 @@ open_firewall() {
   local p
   for p in $HTTP_PORT $HTTPS_PORT $RTMP_PORT; do ufw allow "$p/tcp" >/dev/null; done
   [[ $RTSP_PORT != 0 ]] && ufw allow "$RTSP_PORT/tcp" >/dev/null
-  ok "ufw 已放行 $HTTP_PORT、$HTTPS_PORT、$RTMP_PORT$(rtsp_txt)"
+  [[ $RTMPS_PORT != 0 ]] && ufw allow "$RTMPS_PORT/tcp" >/dev/null
+  ok "ufw 已放行 ${HTTP_PORT}、${HTTPS_PORT}、${RTMP_PORT}$(rtmps_txt)$(rtsp_txt)"
 }
 
 copy_program_files() {
@@ -783,6 +866,7 @@ start_services() {
   systemctl reload nginx 2>/dev/null || systemctl restart nginx
   curl -fsS --max-time 3 "http://127.0.0.1:$HTTP_PORT/health" >/dev/null || die "Nginx 未能转发到后端（端口 $HTTP_PORT）"
   ok "服务运行正常：$SVC_ZLM、$SVC_APP、nginx"
+  [[ ${RTMPS_PORT:-0} == 0 ]] || check_rtmps_tls
 }
 
 print_summary() {
@@ -798,16 +882,26 @@ print_summary() {
   echo "  HTTPS 地址：   https://$ip:$HTTPS_PORT/   （当前为自签名证书，浏览器会提示不安全）"
   [[ -n $pub ]] && echo "  公网访问：     http://$pub:$HTTP_PORT/   （需在路由器映射端口；该 IP 为检测值，经代理出口时可能不准）"
   echo "  推流地址：     rtmp://$ip:$RTMP_PORT/live/<流ID>?key=<推流Key>   （在后台「流管理」创建流后获取）"
+  if [[ $RTMPS_PORT != 0 ]]; then
+    echo "  RTMPS 推流：   rtmps://<证书域名>:$RTMPS_PORT/live/<流ID>?key=<推流Key>   （与站点 HTTPS 共用证书：需在后台「域名配置」上传并应用正式证书，OBS 才能校验通过）"
+  else
+    echo "  RTMPS 推流：   已关闭（如需加密推流：sudo streamswitch → 端口设置）"
+  fi
   [[ $RTSP_PORT != 0 ]] && echo "  RTSP 端口：    $RTSP_PORT"
   echo
   if [[ -n $need ]]; then
     echo "  ${C_Y}${C_W}▶ 首次打开后台会要求注册账号：第一个注册的账号即为超级管理员。${C_0}"
   fi
   echo "  ▶ 域名与 SSL 证书：登录后在「域名配置」中上传证书并填写推流/播放域名（不填则自动使用访问地址）。"
-  echo "  ▶ 路由器端口映射（外网访问时）：$HTTP_PORT、$HTTPS_PORT、$RTMP_PORT$(rtsp_txt)（TCP）"
+  echo "  ▶ 路由器端口映射（外网访问时）：${HTTP_PORT}、${HTTPS_PORT}、${RTMP_PORT}$(rtmps_txt)$(rtsp_txt)（TCP）"
   echo "  ▶ 管理命令：sudo streamswitch    （升级 / 改端口 / 卸载 / 重置密码）"
   echo "  ▶ 日志：$INSTALL_DIR/backend/logs/livems.log    journalctl -u $SVC_ZLM"
   echo
+}
+
+check_dup_ports() {
+  local dup; dup=$(printf '%s\n' "$HTTP_PORT" "$HTTPS_PORT" "$RTMP_PORT" "$RTSP_PORT" "$RTMPS_PORT" | grep -v '^0$' | sort | uniq -d || true)
+  [[ -z $dup ]] || die "端口不能重复：$dup"
 }
 
 # ----------------------------------------------------------------------------- 1. 安装 / 升级
@@ -828,6 +922,9 @@ do_install() {
   HTTPS_PORT=$(pick_port "后台 HTTPS 端口" 51443 SS_HTTPS_PORT)
   RTMP_PORT=$(pick_port "RTMP 推流/播放端口" 1935 SS_RTMP_PORT)
   RTSP_PORT=$(pick_port "RTSP 端口（填 0 关闭）" 554 SS_RTSP_PORT "" 1)
+  RTMPS_PORT=$(pick_port "RTMPS 加密推流端口（填 0 关闭）" 1936 SS_RTMPS_PORT "" 1)
+  check_dup_ports
+  check_rtmps
   APP_PORT=$(free_port 18090)
   ZLM_HTTP_PORT=$(free_port 18080)
   [[ $ZLM_HTTP_PORT == "$APP_PORT" ]] && ZLM_HTTP_PORT=$(free_port $((APP_PORT + 1)))
@@ -877,6 +974,7 @@ do_upgrade() {
   ls -1dt "$INSTALL_DIR"/backup/*/ 2>/dev/null | tail -n +4 | xargs -r rm -rf   # 只保留最近 3 份
 
   setup_redis
+  check_rtmps
   systemctl stop "$SVC_APP" "$SVC_ZLM" 2>/dev/null || true
   copy_program_files
   save_env
@@ -896,35 +994,42 @@ do_upgrade() {
 do_port() {
   require_root; load_env
   echo
-  info "当前端口：HTTP $HTTP_PORT ｜ HTTPS $HTTPS_PORT ｜ RTMP $RTMP_PORT ｜ RTSP $([[ $RTSP_PORT == 0 ]] && echo 已关闭 || echo "$RTSP_PORT")"
+  info "当前端口：HTTP $HTTP_PORT ｜ HTTPS $HTTPS_PORT ｜ RTMP $RTMP_PORT ｜ RTMPS $(off_txt "$RTMPS_PORT") ｜ RTSP $(off_txt "$RTSP_PORT")"
   info "输入新端口，直接回车保持不变"
-  local oh=$HTTP_PORT os=$HTTPS_PORT orr=$RTMP_PORT ors=$RTSP_PORT
+  local oh=$HTTP_PORT os=$HTTPS_PORT orr=$RTMP_PORT ors=$RTSP_PORT om=$RTMPS_PORT
   HTTP_PORT=$(pick_port "后台 HTTP 端口" "$oh" SS_HTTP_PORT "$oh")
   HTTPS_PORT=$(pick_port "后台 HTTPS 端口" "$os" SS_HTTPS_PORT "$os")
   RTMP_PORT=$(pick_port "RTMP 端口" "$orr" SS_RTMP_PORT "$orr")
   RTSP_PORT=$(pick_port "RTSP 端口（填 0 关闭）" "$ors" SS_RTSP_PORT "$ors" 1)
-  if [[ "$HTTP_PORT $HTTPS_PORT $RTMP_PORT $RTSP_PORT" == "$oh $os $orr $ors" ]]; then ok "端口未变化"; return; fi
-  local dup; dup=$(printf '%s\n' "$HTTP_PORT" "$HTTPS_PORT" "$RTMP_PORT" "$RTSP_PORT" | grep -v '^0$' | sort | uniq -d)
-  [[ -z $dup ]] || die "端口不能重复：$dup"
+  RTMPS_PORT=$(pick_port "RTMPS 加密推流端口（填 0 关闭，开启可填 1936）" "$om" SS_RTMPS_PORT "$om" 1)
+  if [[ "$HTTP_PORT $HTTPS_PORT $RTMP_PORT $RTSP_PORT $RTMPS_PORT" == "$oh $os $orr $ors $om" ]]; then ok "端口未变化"; return; fi
+  check_dup_ports
+  check_rtmps
   PKG_DIR=$INSTALL_DIR
   [[ -f $INSTALL_DIR/templates/zlm.ini ]] || { mkdir -p "$INSTALL_DIR/templates"; cp "$INSTALL_DIR/zlm/conf/config.ini" "$INSTALL_DIR/templates/zlm.ini"; }
   save_env
   write_app_conf
   write_zlm_conf
   write_nginx_conf
-  # 后台「对外接入设置」中保存过推流端口的，同步为新 RTMP 端口
-  MYSQL_PWD=$DB_PASS mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" "$DB_NAME" -e \
-    "UPDATE sys_config SET config_val=JSON_SET(config_val,'\$.push_port',$RTMP_PORT) WHERE config_key='ingress' AND JSON_VALID(config_val)" 2>/dev/null || true
+  # 后台「对外接入设置」中保存过推流端口的，按所选协议同步为新的 RTMP / RTMPS 端口；关闭 RTMPS 时改回 RTMP
+  local q= upd sch="IFNULL(JSON_UNQUOTE(JSON_EXTRACT(config_val,'\$.push_schema')),'rtmp')" w="config_key='ingress' AND JSON_VALID(config_val)"
+  [[ $RTMP_PORT != "$orr" ]] && q+="UPDATE sys_config SET config_val=JSON_SET(config_val,'\$.push_port',$RTMP_PORT) WHERE $w AND $sch<>'rtmps';"
+  if [[ $RTMPS_PORT != "$om" ]]; then
+    if [[ $RTMPS_PORT == 0 ]]; then upd="JSON_SET(config_val,'\$.push_schema','rtmp','\$.push_port',$RTMP_PORT)"
+    else upd="JSON_SET(config_val,'\$.push_port',$RTMPS_PORT)"; fi
+    q+="UPDATE sys_config SET config_val=$upd WHERE $w AND $sch='rtmps';"
+  fi
+  if [[ -n $q ]]; then MYSQL_PWD=$DB_PASS mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" "$DB_NAME" -e "$q" 2>/dev/null || true; fi
   open_firewall
   start_services
   # 确认旧端口已释放：nginx 偶尔保留旧监听，必要时完整重启
   local p
-  for p in "$oh" "$os"; do
-    [[ $p == "$HTTP_PORT" || $p == "$HTTPS_PORT" ]] && continue
+  for p in "$oh" "$os" "$om"; do
+    [[ $p == 0 || $p == "$HTTP_PORT" || $p == "$HTTPS_PORT" || $p == "$RTMPS_PORT" ]] && continue
     if ! wait_port_free "$p"; then systemctl restart nginx; wait_port_free "$p" || warn "旧端口 $p 仍在监听，请检查是否被其他程序占用"; fi
   done
   for p in "$orr" "$ors"; do
-    [[ $p == 0 || $p == "$RTMP_PORT" || $p == "$RTSP_PORT" ]] && continue
+    [[ $p == 0 || $p == "$RTMP_PORT" || $p == "$RTSP_PORT" || $p == "$RTMPS_PORT" || $p == "$HTTP_PORT" || $p == "$HTTPS_PORT" ]] && continue
     wait_port_free "$p" || warn "旧端口 $p 仍在监听，请检查是否被其他程序占用"
   done
   ok "端口已更新"
@@ -949,6 +1054,7 @@ do_uninstall() {
   rm -f /etc/systemd/system/$SVC_APP.service /etc/systemd/system/$SVC_ZLM.service "$LOGROTATE" "$BIN_LINK"
   systemctl daemon-reload
   rm -f "$NGX_CONF"
+  remove_stream_conf
   nginx -t >/dev/null 2>&1 && systemctl reload nginx 2>/dev/null || true
 
   if [[ $purge == y ]]; then
@@ -1014,7 +1120,7 @@ do_status() {
   local a z
   a=$(systemctl is-active "$SVC_APP" 2>/dev/null || true); z=$(systemctl is-active "$SVC_ZLM" 2>/dev/null || true)
   echo "  状态：已安装 ${C_W}$(cur_version)${C_0} ｜ 后台 $a ｜ 流媒体内核 $z"
-  echo "  地址：http://$(lan_ip):$HTTP_PORT/ ｜ RTMP $RTMP_PORT"
+  echo "  地址：http://$(lan_ip):$HTTP_PORT/ ｜ RTMP $RTMP_PORT ｜ RTMPS $(off_txt "${RTMPS_PORT:-0}")"
 }
 
 # 标题框：按标题的实际显示宽度生成，保证左右边框对齐

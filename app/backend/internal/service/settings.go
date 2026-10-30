@@ -20,13 +20,25 @@ type IngressConfig struct {
 	PushSchema string `json:"push_schema"`
 	// PushHost 推流主机（域名或 IP），如 live.example.com
 	PushHost string `json:"push_host"`
-	// PushPort 对外 RTMP 端口（公网映射后的端口），rtmp 默认 1935、rtmps 默认 443
+	// PushPort 对外推流端口（公网映射后的端口），0 表示使用本机配置的 RTMP / RTMPS 端口
 	PushPort int `json:"push_port"`
 	// RtspPort 对外 RTSP 端口（展示用，0 表示不开放）
 	RtspPort int `json:"rtsp_port"`
 	// FollowPlayDomain 推流主机是否跟随默认播放域名（此时 PushHost 仅作为兜底）
 	FollowPlayDomain bool `json:"follow_play_domain"`
 }
+
+// IngressView 接入配置的展示视图：附带本机实际开放的推流端口（只读，供后台判断 RTMPS 是否可选）。
+type IngressView struct {
+	IngressConfig
+	// RTMPPort 本机 RTMP 端口
+	RTMPPort int `json:"rtmp_port"`
+	// RTMPSPort 本机 RTMPS 端口，0 表示未开启 RTMPS
+	RTMPSPort int `json:"rtmps_port"`
+}
+
+// errRTMPSDisabled 未开启 RTMPS 时选择 rtmps 推流协议的错误提示。
+var errRTMPSDisabled = fmt.Errorf("本机未开启 RTMPS 推流端口，不能选择 RTMPS：请在服务器执行 sudo streamswitch，进入「端口设置」开启 RTMPS 端口后再保存")
 
 // ingressConfigKey 是 sys_config 中的键名。
 const ingressConfigKey = "ingress"
@@ -47,16 +59,31 @@ func NewSettingsService(cfg *config.Config, playSvc *PlayService) *SettingsServi
 	}
 }
 
+// rtmpPort 返回本机 RTMP 端口。
+func (s *SettingsService) rtmpPort() int {
+	if s.cfg.ZLM.RTMPRTMP > 0 {
+		return s.cfg.ZLM.RTMPRTMP
+	}
+	return 1935
+}
+
+// RTMPSEnabled 本机是否开启了 RTMPS 推流端口。
+func (s *SettingsService) RTMPSEnabled() bool { return s.cfg.ZLM.RTMPSPort > 0 }
+
+// GetIngressView 返回接入配置及本机推流端口信息。
+func (s *SettingsService) GetIngressView() *IngressView {
+	return &IngressView{IngressConfig: *s.GetIngress(), RTMPPort: s.rtmpPort(), RTMPSPort: s.cfg.ZLM.RTMPSPort}
+}
+
 // GetIngress 读取接入配置；未配置或解析失败时返回基于配置文件的默认值。
+//
+// 保存过 rtmps 但本机已关闭 RTMPS 端口时回退为 rtmp，避免给出无法连接的推流地址。
 func (s *SettingsService) GetIngress() *IngressConfig {
 	def := &IngressConfig{
 		PushSchema: "rtmp",
 		PushHost:   "",
-		PushPort:   s.cfg.ZLM.RTMPRTMP,
+		PushPort:   s.rtmpPort(),
 		RtspPort:   0,
-	}
-	if def.PushPort <= 0 {
-		def.PushPort = 1935
 	}
 	raw, err := s.configRepo.Get(ingressConfigKey)
 	if err != nil || strings.TrimSpace(raw) == "" {
@@ -69,10 +96,22 @@ func (s *SettingsService) GetIngress() *IngressConfig {
 	if ing.PushSchema == "" {
 		ing.PushSchema = "rtmp"
 	}
-	if ing.PushPort <= 0 {
+	if ing.PushSchema == "rtmps" && !s.RTMPSEnabled() {
+		ing.PushSchema = "rtmp"
 		ing.PushPort = def.PushPort
 	}
+	if ing.PushPort <= 0 {
+		ing.PushPort = s.defaultPushPort(ing.PushSchema)
+	}
 	return ing
+}
+
+// defaultPushPort 返回协议对应的本机推流端口。
+func (s *SettingsService) defaultPushPort(schema string) int {
+	if schema == "rtmps" {
+		return s.cfg.ZLM.RTMPSPort
+	}
+	return s.rtmpPort()
 }
 
 // SaveIngress 校验并保存接入配置。
@@ -84,6 +123,9 @@ func (s *SettingsService) SaveIngress(ing *IngressConfig) error {
 	if ing.PushSchema != "rtmp" && ing.PushSchema != "rtmps" {
 		return fmt.Errorf("推流协议只支持 rtmp 或 rtmps")
 	}
+	if ing.PushSchema == "rtmps" && !s.RTMPSEnabled() {
+		return errRTMPSDisabled
+	}
 	ing.PushHost = strings.TrimSpace(ing.PushHost)
 	if ing.PushHost != "" {
 		// 不允许带协议头、路径与端口（端口单独配置）
@@ -92,10 +134,13 @@ func (s *SettingsService) SaveIngress(ing *IngressConfig) error {
 		}
 	}
 	if ing.PushPort < 0 || ing.PushPort > 65535 {
-		return fmt.Errorf("对外端口需在 0-65535 之间（0 表示使用协议默认端口）")
+		return fmt.Errorf("对外端口需在 0-65535 之间（0 表示使用本机推流端口）")
 	}
 	if ing.RtspPort < 0 || ing.RtspPort > 65535 {
 		return fmt.Errorf("RTSP 端口需在 0-65535 之间（0 表示不开放）")
+	}
+	if ing.PushPort == 0 {
+		ing.PushPort = s.defaultPushPort(ing.PushSchema)
 	}
 	data, err := json.Marshal(ing)
 	if err != nil {

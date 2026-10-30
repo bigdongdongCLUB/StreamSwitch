@@ -20,7 +20,15 @@ export default {
       push_port: 1935,
       rtsp_port: 0,
       follow_play_domain: false,
+      rtmp_port: 1935,   // 只读：本机 RTMP 端口
+      rtmps_port: 0,     // 只读：本机 RTMPS 端口，0=未开启
     })
+    // 切换协议时，端口仍是另一协议的本机端口则联动替换（公网映射的自定义端口保持不变）
+    const onSchemaChange = (v) => {
+      const from = v === 'rtmps' ? ingress.rtmp_port : ingress.rtmps_port
+      const to = v === 'rtmps' ? ingress.rtmps_port : ingress.rtmp_port
+      if (!ingress.push_port || ingress.push_port === from) ingress.push_port = to
+    }
     const loadIngress = async () => {
       ingressLoading.value = true
       try {
@@ -35,7 +43,9 @@ export default {
     const saveIngress = async () => {
       ingressSaving.value = true
       try {
-        await api.saveIngress({ ...ingress })
+        const { rtmp_port, rtmps_port, ...body } = ingress
+        const d = await api.saveIngress(body)
+        if (d) Object.assign(ingress, d)
         ElementPlus.ElMessage.success('推流域名设置已保存并实时生效')
       } catch (e) {
         ElementPlus.ElMessage.error(e.message)
@@ -252,7 +262,7 @@ export default {
 
     return {
       store, canUpdate, fmtTime,
-      ingressLoading, ingressSaving, ingress, saveIngress, effectivePushHost, previewURL,
+      ingressLoading, ingressSaving, ingress, saveIngress, onSchemaChange, effectivePushHost, previewURL,
       loading, list, load, defaultDomain,
       dlgVisible, dlgMode, dlgLoading, formRef, form, rules, openCreate, openEdit, submitForm,
       setDefault, remove,
@@ -267,15 +277,21 @@ export default {
       <el-card class="page-card" shadow="never" v-loading="ingressLoading">
         <template #header>
           <span>推流域名设置</span>
-          <span class="text-gray" style="font-size:12px;margin-left:10px">推流走 RTMP 直连（1935 端口），不经过 Nginx；保存后实时生效</span>
+          <span class="text-gray" style="font-size:12px;margin-left:10px">RTMP 直连流媒体内核（本机 {{ ingress.rtmp_port }} 端口）；RTMPS 由 Nginx 使用本站点证书加密后转发（本机 {{ ingress.rtmps_port || '未开启' }}）；保存后实时生效</span>
         </template>
 
         <el-form label-width="170px" style="max-width:720px">
           <el-form-item label="推流协议">
-            <el-radio-group v-model="ingress.push_schema" :disabled="!canUpdate">
+            <el-radio-group v-model="ingress.push_schema" :disabled="!canUpdate" @change="onSchemaChange">
               <el-radio value="rtmp">RTMP</el-radio>
-              <el-radio value="rtmps">RTMPS</el-radio>
+              <el-radio value="rtmps" :disabled="!ingress.rtmps_port">RTMPS</el-radio>
             </el-radio-group>
+            <div class="text-gray" style="font-size:12px" v-if="!ingress.rtmps_port">
+              本机未开启 RTMPS 端口，暂不能选择。如需加密推流：在服务器执行 <span class="mono">sudo streamswitch</span> →「端口设置」开启 RTMPS 端口
+            </div>
+            <div class="text-gray" style="font-size:12px" v-else-if="ingress.push_schema === 'rtmps'">
+              RTMPS 使用下方「SSL 证书」中已应用到站点的证书，推流域名需在证书覆盖范围内，否则 OBS 会校验失败
+            </div>
           </el-form-item>
           <el-form-item label="跟随默认播放域名">
             <el-switch v-model="ingress.follow_play_domain" :disabled="!canUpdate" />
@@ -293,7 +309,7 @@ export default {
           <el-form-item :label="ingress.push_schema === 'rtmps' ? '对外 RTMPS 端口' : '对外 RTMP 端口'">
             <el-input-number controls-position="right" v-model="ingress.push_port" :min="0" :max="65535" style="width:180px" :disabled="!canUpdate" />
             <div class="text-gray" style="font-size:12px">
-              公网映射后的端口；{{ ingress.push_schema === 'rtmps' ? '443' : '1935' }} 为协议默认端口（地址中省略），0 表示使用默认
+              公网映射后的端口；本机{{ ingress.push_schema === 'rtmps' ? ' RTMPS 端口为 ' + ingress.rtmps_port : ' RTMP 端口为 ' + ingress.rtmp_port }}，0 表示使用本机端口；{{ ingress.push_schema === 'rtmps' ? '443' : '1935' }} 为协议默认端口（地址中省略）
             </div>
           </el-form-item>
           <el-form-item label="对外 RTSP 端口">

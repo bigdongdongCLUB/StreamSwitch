@@ -60,7 +60,7 @@ zlm:
   hook_path: /index/hook   # 本服务接收 ZLM 回调的路径前缀
   sync_secs: 30            # 定期与 ZLM 同步流状态的间隔(秒)
   rtmp_port: 1935          # 对外 RTMP 端口
-  rtmps_port: 0
+  rtmps_port: 0            # RTMPS 推流端口（由部署脚本配置 Nginx stream TLS 终止），0=未开启
 
 hls:
   upstream_url: "http://127.0.0.1:18080" # 回源地址（ZLMediaKit 的 HTTP 端口）
@@ -93,6 +93,7 @@ nginx:                              # 证书管理（后台「域名配置」页
   vhost_conf: "/etc/nginx/conf.d/streamswitch.conf"
   cert_dir: "/opt/streamswitch/certs"
   reload_cmd: "nginx -s reload"
+  stream_conf: ""          # RTMPS 的 Nginx stream 配置文件，应用证书时同步替换（为空=未开启 RTMPS）
 
 studio:                             # 制播管理（滚动字幕/Logo压制、本地视频轮播）
   ffmpeg_path: "/usr/bin/ffmpeg"
