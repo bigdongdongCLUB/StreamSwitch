@@ -146,6 +146,7 @@ var (
 // Apply 将指定证书应用到本站点 Nginx 配置。
 //
 // 流程：备份 conf -> 替换证书路径 -> nginx -t -> 失败则回滚 -> 成功则 reload。
+// 开启了 RTMPS 时（nginx.stream_conf），stream 配置中的证书与站点同步替换，一并校验与回滚。
 func (s *CertService) Apply(name string) error {
 	if !certNamePattern.MatchString(name) || strings.Contains(name, "..") {
 		return fmt.Errorf("非法的证书名称")
@@ -159,32 +160,54 @@ func (s *CertService) Apply(name string) error {
 		}
 	}
 
-	confPath := s.cfg.Nginx.VhostConf
-	raw, err := os.ReadFile(confPath)
-	if err != nil {
-		return fmt.Errorf("读取 Nginx 配置失败: %w", err)
+	confs := []string{s.cfg.Nginx.VhostConf}
+	if sc := strings.TrimSpace(s.cfg.Nginx.StreamConf); sc != "" {
+		if _, err := os.Stat(sc); err == nil {
+			confs = append(confs, sc)
+		} else {
+			logger.Warn("RTMPS 配置文件不存在，仅更新站点证书: %s", sc)
+		}
 	}
-	content := string(raw)
-	if !sslCertLineRe.MatchString(content) || !sslCertKeyLineRe.MatchString(content) {
-		return fmt.Errorf("Nginx 配置中未找到 ssl_certificate 配置行")
+	origs := make([][]byte, len(confs))
+	updated := make([]string, len(confs))
+	for i, confPath := range confs {
+		raw, err := os.ReadFile(confPath)
+		if err != nil {
+			return fmt.Errorf("读取 Nginx 配置失败: %w", err)
+		}
+		content := string(raw)
+		if !sslCertLineRe.MatchString(content) || !sslCertKeyLineRe.MatchString(content) {
+			return fmt.Errorf("Nginx 配置中未找到 ssl_certificate 配置行: %s", confPath)
+		}
+		// 替换证书路径
+		newContent := sslCertLineRe.ReplaceAllString(content, "${1}ssl_certificate    "+fullchain+";")
+		updated[i] = sslCertKeyLineRe.ReplaceAllString(newContent, "${1}ssl_certificate_key    "+privkey+";")
+		origs[i] = raw
 	}
 
-	// 替换证书路径
-	newContent := sslCertLineRe.ReplaceAllString(content, "${1}ssl_certificate    "+fullchain+";")
-	newContent = sslCertKeyLineRe.ReplaceAllString(newContent, "${1}ssl_certificate_key    "+privkey+";")
-
-	// 备份原配置
-	backup := fmt.Sprintf("%s.bak.%d", confPath, time.Now().Unix())
-	if err := os.WriteFile(backup, raw, 0644); err != nil {
-		return fmt.Errorf("备份 Nginx 配置失败: %w", err)
+	rollback := func() {
+		for i, confPath := range confs {
+			_ = os.WriteFile(confPath, origs[i], 0644)
+		}
 	}
-	// 写入新配置
-	if err := os.WriteFile(confPath, []byte(newContent), 0644); err != nil {
-		return fmt.Errorf("写入 Nginx 配置失败: %w", err)
+	backups := make([]string, 0, len(confs))
+	for i, confPath := range confs {
+		// 备份原配置
+		backup := fmt.Sprintf("%s.bak.%d", confPath, time.Now().Unix())
+		if err := os.WriteFile(backup, origs[i], 0644); err != nil {
+			rollback()
+			return fmt.Errorf("备份 Nginx 配置失败: %w", err)
+		}
+		backups = append(backups, backup)
+		// 写入新配置
+		if err := os.WriteFile(confPath, []byte(updated[i]), 0644); err != nil {
+			rollback()
+			return fmt.Errorf("写入 Nginx 配置失败: %w", err)
+		}
 	}
 	// nginx -t 校验，失败自动回滚
 	if out, err := exec.Command("nginx", "-t").CombinedOutput(); err != nil {
-		_ = os.WriteFile(confPath, raw, 0644)
+		rollback()
 		_ = exec.Command("nginx", "-t").Run()
 		return fmt.Errorf("Nginx 配置校验失败，已自动回滚: %v: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -195,7 +218,7 @@ func (s *CertService) Apply(name string) error {
 			return fmt.Errorf("Nginx 重载失败: %v: %s", err, strings.TrimSpace(string(out)))
 		}
 	}
-	logger.Info("证书已应用到站点: %s -> %s (备份: %s)", name, fullchain, backup)
+	logger.Info("证书已应用: %s -> %s (配置: %v, 备份: %v)", name, fullchain, confs, backups)
 	return nil
 }
 

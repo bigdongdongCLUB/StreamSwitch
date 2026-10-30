@@ -21,7 +21,7 @@ func NewSettingsHandler(settingsSvc *service.SettingsService) *SettingsHandler {
 //
 // GET /api/v1/settings/ingress
 func (h *SettingsHandler) GetIngress(c *gin.Context) {
-	response.OK(c, h.settingsSvc.GetIngress())
+	response.OK(c, h.settingsSvc.GetIngressView())
 }
 
 // SaveIngress 处理保存对外接入配置（实时生效，无需重启）。
@@ -37,5 +37,5 @@ func (h *SettingsHandler) SaveIngress(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	response.OKMsg(c, "接入配置已保存并实时生效", h.settingsSvc.GetIngress())
+	response.OKMsg(c, "接入配置已保存并实时生效", h.settingsSvc.GetIngressView())
 }

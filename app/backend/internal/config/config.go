@@ -52,6 +52,8 @@ type NginxConfig struct {
 	CertDir string `yaml:"cert_dir"`
 	// ReloadCmd 证书变更后执行的 Nginx 重载命令
 	ReloadCmd string `yaml:"reload_cmd"`
+	// StreamConf RTMPS 的 Nginx stream 配置文件路径；应用证书时与 VhostConf 同步替换（为空表示未开启 RTMPS）
+	StreamConf string `yaml:"stream_conf"`
 }
 
 // ServerConfig 后端 HTTP 服务监听配置。
@@ -121,7 +123,7 @@ type ZLMConfig struct {
 	HookPath  string `yaml:"hook_path"`  // 本服务接收 ZLM 回调的路径前缀
 	SyncSecs  int    `yaml:"sync_secs"`  // 定期与 ZLM 同步流状态间隔(秒)
 	RTMPRTMP  int    `yaml:"rtmp_port"`  // 对外 RTMP 端口
-	RTMPRTSPS int    `yaml:"rtmps_port"` // 对外 RTMPS 端口
+	RTMPSPort int    `yaml:"rtmps_port"` // RTMPS 推流端口（Nginx stream TLS 终止后转发到 RTMP 端口），0=未开启
 }
 
 // HLSConfig HLS 加密与代理配置。
@@ -223,7 +225,7 @@ func Default() *Config {
 			HookPath:  "/index/hook",
 			SyncSecs:  30,
 			RTMPRTMP:  1935,
-			RTMPRTSPS: 0,
+			RTMPSPort: 0,
 		},
 		Log: LogConfig{
 			Level:      "info",
